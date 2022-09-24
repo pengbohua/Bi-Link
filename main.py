@@ -3,25 +3,26 @@ import json
 import torch.backends.cudnn as cudnn
 
 import argparse
-from trainer import Trainer, TrainingArguments
+from nsp_trainer import Trainer, TrainingArguments
 from preprocess_data import EntityLinkingSet
-from logger_config import logger
+from utils import logger
 import wandb
 
 def get_args():
     parser = argparse.ArgumentParser("zero shot entity linker")
 
-    parser.add_argument("--pretrained-model-path", default='pretrained', type=str,
+    parser.add_argument("--pretrained-model-path", default='bert-base-uncased', type=str,
                         help="Path to pretrained transformers.")
-    parser.add_argument("--train-documents-file", nargs="+", default=None,
+    parser.add_argument("--document-files", nargs="+", default=None,
                         help="Path to train documents json file.")
-    parser.add_argument("--eval-documents-file", nargs="+", default=None,
-                        help="Path to train documents json file.")
-    parser.add_argument("--mentions-file", default='zeshel/mentions', type=str,
+    parser.add_argument("--train-mentions-file", default=None, type=str,
                         help="Path to mentions json file.")
-    parser.add_argument("--tfidf-candidates-file", default='tfidf_candidates/test.json', type=str,
+    parser.add_argument("--eval-mentions-file", default=None, type=str,
+                        help="Path to mentions json file.")
+    parser.add_argument("--train-tfidf-candidates-file", default='tfidf_candidates/train_tfidfs.json', type=str,
                         help="Path to TFIDF candidates file.")
-
+    parser.add_argument("--eval-tfidf-candidates-file", default='tfidf_candidates/test_tfidfs.json', type=str,
+                        help="Path to TFIDF candidates file.")
     parser.add_argument(
         "--split-by-domain", default=False, type=bool,
         help="Split output data file by domain.")
@@ -32,7 +33,7 @@ def get_args():
                         help="weight decay for optimization")
     parser.add_argument("--epochs", default=3, type=int,
                         help="weight decay for optimization")
-    parser.add_argument("--train-batch-size", default=128, type=int,
+    parser.add_argument("--train-batch-size", default=16, type=int,
                         help="train batch size")
     parser.add_argument("--eval-batch-size", default=128, type=int,
                         help="train batch size")
@@ -61,18 +62,18 @@ def main():
     train_args = TrainingArguments
     train_dataset = EntityLinkingSet(
                                     pretrained_model_path=args.pretrained_model_path,
-                                    document_files=args.train_documents_file,
-                                     mentions_files=['zeshel/mentions/test.json'],
-                                     tfidf_candidates_file=args.tfidf_candidates_file,
+                                    document_files=args.document_files,
+                                     mentions_path=args.train_mentions_file,
+                                     tfidf_candidates_file=args.train_tfidf_candidates_file,
                                      num_candidates=args.num_candidates,
                                      max_seq_length=256,
                                      is_training=True)
 
     eval_dataset = EntityLinkingSet(
                                     pretrained_model_path=args.pretrained_model_path,
-                                    document_files=args.eval_documents_file,
-                                   mentions_files=['zeshel/mentions/test.json'],
-                                   tfidf_candidates_file=args.tfidf_candidates_file,
+                                    document_files=args.document_files,
+                                    mentions_path=args.eval_mentions_file,
+                                   tfidf_candidates_file=args.eval_tfidf_candidates_file,
                                     num_candidates=args.num_candidates,
                                     max_seq_length=256,
                                    is_training=False)
@@ -82,6 +83,7 @@ def main():
         train_dataset=train_dataset,
         eval_dataset=eval_dataset,
         train_args=train_args)
+
     logger.info('Args={}'.format(json.dumps(args.__dict__, ensure_ascii=False, indent=4)))
     trainer.run()
 

@@ -5,11 +5,10 @@ import torch
 import os
 import shutil
 import glob
-from typing import Dict
+from typing import Dict, List
 from transformers import AdamW, get_linear_schedule_with_warmup
 from preprocess_data import collate
 from utils import AverageMeter, ProgressMeter, logger
-from metric import accuracy
 from transformers import AutoModel, AutoConfig
 from dataclasses import dataclass, field
 
@@ -75,8 +74,8 @@ class Trainer:
                                lr=self.args.learning_rate,
                                weight_decay=self.args.weight_decay)
 
-        num_training_steps = args.epochs * len(train_dataset) // max(self.args.train_batch_size, 1)
-        self.args.warmup = min(args.warmup, num_training_steps // 10)
+        num_training_steps = self.args.epochs * len(train_dataset) // max(self.args.train_batch_size, 1)
+        self.args.warmup = min(self.args.warmup, num_training_steps // 10)
         logger.info('Total training steps: {}, warmup steps: {}'.format(num_training_steps, self.args.warmup))
         self.scheduler = get_linear_schedule_with_warmup(optimizer=self.optimizer,
                                                    num_warmup_steps=self.args.warmup,
@@ -176,7 +175,7 @@ class Trainer:
             loss = self.criterion(logits, labels)
             losses.update(loss.item(), batch_size)
 
-            acc1, acc3, acc10 = accuracy(logits, labels, topk=(1, 3, 10))
+            acc1, acc3, acc10 = self.accuracy(logits, labels, topk=(1, 3, 10))
             top1.update(acc1.item(), batch_size)
             top3.update(acc3.item(), batch_size)
             top10.update(acc10.item(), batch_size)
@@ -211,7 +210,7 @@ class Trainer:
             logits = self.model.predict_head(h) * self.t
             loss = self.criterion(logits, labels)
 
-            acc1, acc3 = accuracy(logits, labels, topk=(1, 3))
+            acc1, acc3 = self.accuracy(logits, labels, topk=(1, 3))
             top1.update(acc1.item(), batch_size)
             top3.update(acc3.item(), batch_size)
 
@@ -227,6 +226,23 @@ class Trainer:
                 progress.display(i)
             if (i + 1) % self.args.eval_every_n_steps == 0:
                 self.eval_loop(epoch=self.epoch, step=i + 1)
+
+    @staticmethod
+    def accuracy(output: torch.tensor, target: torch.tensor, topk=(1,)) -> List[torch.tensor]:
+        """Computes the accuracy over the k top predictions for the specified values of k"""
+        with torch.no_grad():
+            maxk = max(topk)
+            batch_size = target.size(0)
+
+            _, pred = output.topk(maxk, 1, True, True)
+            pred = pred.t()
+            correct = pred.eq(target.view(1, -1).expand_as(pred))
+
+            res = []
+            for k in topk:
+                correct_k = correct[:k].contiguous().view(-1).float().sum(0, keepdim=True)
+                res.append(correct_k.mul_(100.0 / batch_size))
+            return res
 
     @staticmethod
     def save_checkpoint(state: dict, is_best: bool, filename: str):

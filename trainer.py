@@ -9,7 +9,7 @@ from preprocess_data import collate
 from utils import AverageMeter, ProgressMeter, logger
 from metric import accuracy
 from transformers import AutoModel, AutoConfig
-from logger_config import logger
+from utils import logger
 from dataclasses import dataclass, field
 
 @dataclass
@@ -58,8 +58,8 @@ class Trainer:
                                lr=self.args.learning_rate,
                                weight_decay=self.args.weight_decay)
 
-        num_training_steps = args.epochs * len(train_dataset) // max(self.args.train_batch_size, 1)
-        self.args.warmup = min(args.warmup, num_training_steps // 10)
+        num_training_steps = self.args.epochs * len(train_dataset) // max(self.args.train_batch_size, 1)
+        self.args.warmup = min(self.args.warmup, num_training_steps // 10)
         logger.info('Total training steps: {}, warmup steps: {}'.format(num_training_steps, self.args.warmup))
         self.scheduler = get_linear_schedule_with_warmup(optimizer=self.optimizer,
                                                    num_warmup_steps=self.args.warmup,
@@ -117,7 +117,7 @@ class Trainer:
         filename = '{}/checkpoint_{}_{}.mdl'.format(self.args.model_dir, epoch, step)
         if step == 0:
             filename = '{}/checkpoint_epoch{}.mdl'.format(self.args.model_dir, epoch)
-        save_checkpoint({
+        self.save_checkpoint({
             'epoch': epoch,
             'args': self.args.__dict__,
             'state_dict': self.model.state_dict(),

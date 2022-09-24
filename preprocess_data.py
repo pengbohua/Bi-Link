@@ -35,7 +35,17 @@ class CLInstance(object):
     doc_ids : List[str]
     corpus : str
 
-def load_documents(input_dir, keyname='document_id'):
+def load_candidates(input_dir):
+    documents = {}
+    with open(input_dir, "r", encoding="utf-8") as reader:
+        doc_dicts = json.load(reader)
+
+    for doc in doc_dicts:
+        documents[doc['mention_id']] = doc["tfidf_candidates"]  # mention_id to candidates
+
+    return documents
+
+def load_documents(input_dir):
     documents = {}
     with open(input_dir, "r", encoding="utf-8") as reader:
         while True:
@@ -44,12 +54,7 @@ def load_documents(input_dir, keyname='document_id'):
             if not line:
                 break
             line = json.loads(line)
-            if keyname=='document_id':
-                documents[line['document_id']] = line
-            elif keyname=='mention_id':
-                documents[line['mention_id']] = line["tfidf_candidates"]
-            else:
-                raise NotImplementedError
+            documents[line['document_id']] = line
     logger.info("Loading {} documents from {}".format(len(documents), input_dir))
     return documents
 
@@ -124,30 +129,23 @@ def customized_tokenize(tokenizer, token_a, text_pair_b, text_pair_b_max_len, ma
 
 class EntityLinkingSet(Dataset):
     """Create `TrainingInstance`s from raw text."""
-    def __init__(self, pretrained_model_path, document_files, mentions_files, tfidf_candidates_file, max_seq_length,
+    def __init__(self, pretrained_model_path, document_files, mentions_path, tfidf_candidates_file, max_seq_length,
                  num_candidates, is_training=True,):
         self.tokenizer = AutoTokenizer.from_pretrained(pretrained_model_path)
+        self.document_path = document_files[0].split(",")
         self.num_candidates = num_candidates
         self.rng = random.Random(12345)
         self.max_seq_length = max_seq_length
         self.is_training = is_training
-        self.all_documents = {}      # doc_id to doc_dict
+        self.all_documents = {}      # doc_id/ entity_id to entity
 
-        for input_file_path in document_files:
-            self.all_documents.update(load_documents(input_file_path, "document_id"))
-        self.candidates = load_documents(tfidf_candidates_file, "mention_id")
+        for input_file_path in self.document_path:
+            self.all_documents.update(load_documents(input_file_path))
 
-        self.mentions = []       # doc_id to doc_dict
-        for input_file in mentions_files:
-            with open(input_file, "r", encoding="utf-8") as reader:
-                while True:
-                    line = reader.readline()
-                    line = line.strip()
-                    if not line:
-                        break
-                    line = json.loads(line)
-                    self.mentions.append(self.filter_mention(line))
-            logger.info("Loading {} mentions from {}".format(len(self.mentions), input_file))
+        self.candidates = load_candidates(tfidf_candidates_file)   # mention_id to candidates
+
+        self.mentions = self.load_mentions(mentions_path)       # mention_id, context_id, label_id, start_idx, end_idx
+
 
     def filter_mention(self, mention):
         mention_id = mention["mention_id"]
@@ -163,6 +161,15 @@ class EntityLinkingSet(Dataset):
         else:
             return mention
 
+    def load_mentions(self, mention_dir):
+        with open(mention_dir, "r", encoding="utf-8") as m:
+            mentions = json.load(m)
+        filtered_mentions = []
+        for entry in mentions:
+            filtered_mentions.append(self.filter_mention(entry))
+        logger.info("Loading {} mentions from {}".format(len(filtered_mentions), mention_dir))
+        return filtered_mentions
+
     def reserve_topk_tf_idf_candidates(self):
         if not self.is_training:
             topk_candidates_dict = {}
@@ -171,9 +178,6 @@ class EntityLinkingSet(Dataset):
 
             self.candidates = topk_candidates_dict
 
-    @property
-    def split_by_domain(self):
-        return self.args.split_by_domain
 
     def __len__(self):
         return len(self.mentions)
