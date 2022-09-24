@@ -11,7 +11,7 @@ if [ -z $MENTIONDIR]; then
 fi
 
 if [ -z $TFIDFDIR]; then
-  TFIDFDIR="data/tf-idfs"
+  TFIDFDIR="data/tfidf_candidates"
 fi
 
 domains=("american_football" "doctor_who" "fallout" "final_fantasy" "military" "pro_wrestling" "starwars" "world_of_warcraft" \

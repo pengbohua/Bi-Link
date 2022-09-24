@@ -1,5 +1,6 @@
 import torch.nn as nn
 import torch.utils.data
+import time
 import json
 import torch
 import os
@@ -9,8 +10,10 @@ from typing import Dict, List
 from transformers import AdamW, get_linear_schedule_with_warmup
 from preprocess_data import collate
 from utils import AverageMeter, ProgressMeter, logger
-from transformers import AutoModel, AutoConfig
+from transformers import BertModel, AutoConfig
 from dataclasses import dataclass, field
+
+curr_time = time.strftime("%Y-%m-%d-%H-%M-%S", time.localtime(time.time()))
 
 @dataclass
 class TrainingArguments:
@@ -28,9 +31,9 @@ class TrainingArguments:
                             )
     warmup: int = field(default=500,
                         metadata={"help": "warmup steps"})
-    train_batch_size: int = field(default=128,
+    train_batch_size: int = field(default=2,
                         metadata={"help": "train batch size"})
-    eval_batch_size: int = field(default=128,
+    eval_batch_size: int = field(default=2,
                         metadata={"help": "eval batch size"})
     eval_every_n_steps: int = field(default=1000,
                         metadata={"help": "eval every n steps"})
@@ -52,17 +55,18 @@ class Trainer:
         # training arguments
         self.args = train_args
         self.pretrained_model_path = pretrained_model_path
-        self.eval_model_path = eval_model_path
+        self.eval_model_path = eval_model_path + "/" + curr_time
+        os.makedirs(self.eval_model_path, exist_ok=True)
         # create model
         logger.info("Creating model")
         self.config = AutoConfig.from_pretrained(pretrained_model_path)
-        self.model = AutoModel.from_pretrained(pretrained_model_path)
-        # adding mention span token type ids
+        self.model = BertModel.from_pretrained(pretrained_model_path)
+        # adding mention span as a new type to token type ids
         old_type_vocab_size = self.config.type_vocab_size
         self.config.type_vocab_size = 3
         new_token_type_embeddings = nn.Embedding(self.config.type_vocab_size, self.config.hidden_size)
         self.model._init_weights(new_token_type_embeddings)
-        new_token_type_embeddings.weight.data[:old_type_vocab_size, :] = self.model.embeddings.token_type_embeddings[:old_type_vocab_size, :]
+        new_token_type_embeddings.weight.data[:old_type_vocab_size, :] = self.model.embeddings.token_type_embeddings.weight.data[:old_type_vocab_size, :]
         self.model.embeddings.token_type_embeddings = new_token_type_embeddings
         self.model.predict_head = nn.Linear(self.config.hidden_size, 1)
         self.t = 20
@@ -196,14 +200,12 @@ class Trainer:
             [losses, top1, top3],
             prefix="Epoch: [{}]".format(self.epoch))
 
-        for i, batch_dict in enumerate(self.train_loader):
+        for i, (batch_dict, labels) in enumerate(self.train_loader):
             self.model.train()
 
             if torch.cuda.is_available():
                 batch_dict = self.move_to_cuda(batch_dict)
-            batch_size = len(batch_dict['batch_data'])
-            labels = batch_dict['labels']
-
+            batch_size = len(labels)
 
             outputs = self.model(**batch_dict)
             h = outputs.last_hidden_state

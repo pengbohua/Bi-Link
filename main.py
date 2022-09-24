@@ -4,14 +4,16 @@ import torch.backends.cudnn as cudnn
 
 import argparse
 from nsp_trainer import Trainer, TrainingArguments
-from preprocess_data import EntityLinkingSet
+from preprocess_data import EntityLinkingSet, load_documents
 from utils import logger
-import wandb
+# import wandb
 
 def get_args():
     parser = argparse.ArgumentParser("zero shot entity linker")
 
-    parser.add_argument("--pretrained-model-path", default='bert-base-uncased', type=str,
+    parser.add_argument("--pretrained-model-path", default='/liuzyai04/BMKG/huggingface/bert-base-uncased', type=str,
+                        help="Path to pretrained transformers.")
+    parser.add_argument("--eval-model-path", default='checkpoint', type=str,
                         help="Path to pretrained transformers.")
     parser.add_argument("--document-files", nargs="+", default=None,
                         help="Path to train documents json file.")
@@ -60,9 +62,20 @@ def main():
 
     args = get_args()
     train_args = TrainingArguments
+    train_args.learning_rate = args.learning_rate
+    train_args.train_batch_size = args.train_batch_size
+    train_args.eval_batch_size = args.eval_batch_size
+
+    all_documents = {}      # doc_id/ entity_id to entity
+    document_path = args.document_files[0].split(",")
+    for input_file_path in document_path:
+        all_documents.update(load_documents(input_file_path))
+
+
     train_dataset = EntityLinkingSet(
                                     pretrained_model_path=args.pretrained_model_path,
-                                    document_files=args.document_files,
+                                    # document_files=args.document_files,
+                                    document_files=all_documents,
                                      mentions_path=args.train_mentions_file,
                                      tfidf_candidates_file=args.train_tfidf_candidates_file,
                                      num_candidates=args.num_candidates,
@@ -71,7 +84,8 @@ def main():
 
     eval_dataset = EntityLinkingSet(
                                     pretrained_model_path=args.pretrained_model_path,
-                                    document_files=args.document_files,
+                                    # document_files=args.document_files,
+                                    document_files=all_documents,
                                     mentions_path=args.eval_mentions_file,
                                    tfidf_candidates_file=args.eval_tfidf_candidates_file,
                                     num_candidates=args.num_candidates,
@@ -80,6 +94,7 @@ def main():
 
     trainer = Trainer(
         pretrained_model_path=args.pretrained_model_path,
+        eval_model_path=args.eval_model_path,
         train_dataset=train_dataset,
         eval_dataset=eval_dataset,
         train_args=train_args)

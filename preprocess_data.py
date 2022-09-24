@@ -12,7 +12,7 @@ from transformers import AutoConfig, AutoTokenizer
 import json
 from dataclasses import dataclass, field
 from torch.utils.data import Dataset, DataLoader
-from typing import List, Dict
+from typing import List, Dict, Tuple
 from utils import logger
 
 
@@ -132,16 +132,16 @@ class EntityLinkingSet(Dataset):
     def __init__(self, pretrained_model_path, document_files, mentions_path, tfidf_candidates_file, max_seq_length,
                  num_candidates, is_training=True,):
         self.tokenizer = AutoTokenizer.from_pretrained(pretrained_model_path)
-        self.document_path = document_files[0].split(",")
         self.num_candidates = num_candidates
         self.rng = random.Random(12345)
         self.max_seq_length = max_seq_length
         self.is_training = is_training
-        self.all_documents = {}      # doc_id/ entity_id to entity
-
-        for input_file_path in self.document_path:
-            self.all_documents.update(load_documents(input_file_path))
-
+        # self.document_path = document_files[0].split(",")
+        # self.all_documents = {}      # doc_id/ entity_id to entity
+        #
+        # for input_file_path in self.document_path:
+        #     self.all_documents.update(load_documents(input_file_path))
+        self.all_documents = document_files
         self.candidates = load_candidates(tfidf_candidates_file)   # mention_id to candidates
 
         self.mentions = self.load_mentions(mentions_path)       # mention_id, context_id, label_id, start_idx, end_idx
@@ -230,7 +230,6 @@ class EntityLinkingSet(Dataset):
         doc_ids = [label_document_id]
         for cand_document_id in cand_document_ids:
             cand_document = self.all_documents[cand_document_id]['text']
-            cand_document = self.tokenizer.tokenize(cand_document)[:cand_length]
             neg_doc_dict = customized_tokenize(self.tokenizer, mention_context, cand_document, cand_length,
                                                self.max_seq_length, mention_start, mention_end)
             doc_input_dicts.append(neg_doc_dict)
@@ -248,7 +247,7 @@ class EntityLinkingSet(Dataset):
         return instance
 
 
-def collate(batch_data: List[NSPInstance]) -> dict:
+def collate(batch_data: List[NSPInstance]) -> Tuple[dict, tensor]:
     input_ids = []
     attention_mask = []
     token_type_ids = []
@@ -266,5 +265,4 @@ def collate(batch_data: List[NSPInstance]) -> dict:
         "input_ids": torch.cat(input_ids, 0),
         "attention_mask": torch.cat(attention_mask, 0),
         "token_type_ids": torch.cat(token_type_ids, 0),
-        "labels": labels
-    }
+    }, torch.cat(labels, 0)
