@@ -165,21 +165,22 @@ class Trainer:
         top3 = AverageMeter('Acc@3', ':6.2f')
         top10 = AverageMeter('Acc@10', ':6.2f')
 
-        for i, batch_dict in enumerate(self.valid_loader):
+        for i, (batch_dict, labels) in enumerate(self.valid_loader):
             self.model.eval()
 
             if torch.cuda.is_available():
                 batch_dict = self.move_to_cuda(batch_dict)
+                labels = labels.cuda(non_blocking=True)
             batch_size = len(batch_dict['batch_data'])
 
             outputs = self.model(**batch_dict)
-            h = outputs.last_hidden_state
+            h = outputs.last_hidden_state[:, 0, :]
             logits = self.model.predict_head(h) * self.t
-            labels = batch_dict['labels']
-            loss = self.criterion(logits, labels)
+            loss = self.criterion(logits.squeeze(), labels.float())
             losses.update(loss.item(), batch_size)
 
-            acc1, acc3, acc10 = self.accuracy(logits, labels, topk=(1, 3, 10))
+            acc_labels = torch.zeros(batch_size//65, device=labels.device)
+            acc1, acc3, acc10 = self.accuracy(logits.reshape(-1, 65), acc_labels, topk=(1, 3, 10))
             top1.update(acc1.item(), batch_size)
             top3.update(acc3.item(), batch_size)
             top10.update(acc10.item(), batch_size)
@@ -205,14 +206,16 @@ class Trainer:
 
             if torch.cuda.is_available():
                 batch_dict = self.move_to_cuda(batch_dict)
+                labels = labels.cuda()
             batch_size = len(labels)
 
             outputs = self.model(**batch_dict)
-            h = outputs.last_hidden_state
+            h = outputs.last_hidden_state[:, 0, :]
             logits = self.model.predict_head(h) * self.t
-            loss = self.criterion(logits, labels)
+            loss = self.criterion(logits.squeeze(), labels.float())
 
-            acc1, acc3 = self.accuracy(logits, labels, topk=(1, 3))
+            acc_labels = torch.zeros(batch_size//65, device=labels.device)
+            acc1, acc3 = self.accuracy(logits.reshape(-1, 65), acc_labels, topk=(1, 3))
             top1.update(acc1.item(), batch_size)
             top3.update(acc3.item(), batch_size)
 
@@ -235,9 +238,9 @@ class Trainer:
         with torch.no_grad():
             maxk = max(topk)
             batch_size = target.size(0)
-
             _, pred = output.topk(maxk, 1, True, True)
             pred = pred.t()
+
             correct = pred.eq(target.view(1, -1).expand_as(pred))
 
             res = []
