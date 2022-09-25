@@ -1,5 +1,6 @@
 import logging
 import json
+import time
 
 def _setup_logger():
     log_format = logging.Formatter("[%(asctime)s %(levelname)s] %(message)s")

@@ -12,6 +12,7 @@ from preprocess_data import collate
 from utils import AverageMeter, ProgressMeter, logger
 from transformers import BertModel, AutoConfig
 from dataclasses import dataclass, field
+from metrics import accuracy, compute_metric
 
 curr_time = time.strftime("%Y-%m-%d-%H-%M-%S", time.localtime(time.time()))
 
@@ -69,10 +70,11 @@ class Trainer:
         new_token_type_embeddings.weight.data[:old_type_vocab_size, :] = self.model.embeddings.token_type_embeddings.weight.data[:old_type_vocab_size, :]
         self.model.embeddings.token_type_embeddings = new_token_type_embeddings
         self.model.predict_head = nn.Linear(self.config.hidden_size, 1)
-        self.t = 20
+        self.t = 1
         self._setup_training()
 
         # loss and optimization
+        self.positive_weight = torch.FloatTensor([1, 20]).cuda()
         self.criterion = nn.BCEWithLogitsLoss().cuda()
         self.optimizer = AdamW([p for p in self.model.parameters() if p.requires_grad],
                                lr=self.args.learning_rate,
@@ -108,6 +110,7 @@ class Trainer:
                 pin_memory=True)
 
     def run(self):
+        self.evaluate()
 
         for epoch in range(self.args.epochs):
             self.train_one_epoch()
@@ -161,9 +164,12 @@ class Trainer:
     def eval_loop(self) -> Dict:
 
         losses = AverageMeter('Loss', ':.4')
-        top1 = AverageMeter('Acc@1', ':6.2f')
-        top3 = AverageMeter('Acc@3', ':6.2f')
-        top10 = AverageMeter('Acc@10', ':6.2f')
+        accs = AverageMeter('Acc', ':6.2f')
+        hit1 = AverageMeter('hit1', ':6.2f')
+        hit3 = AverageMeter('hit3', ':6.2f')
+        hit10 = AverageMeter('hit10', ':6.2f')
+        mrr = AverageMeter('MRR', ':6.2f')
+
 
         for i, (batch_dict, labels) in enumerate(self.valid_loader):
             self.model.eval()
@@ -171,34 +177,39 @@ class Trainer:
             if torch.cuda.is_available():
                 batch_dict = self.move_to_cuda(batch_dict)
                 labels = labels.cuda(non_blocking=True)
-            batch_size = len(batch_dict['batch_data'])
+            batch_size = len(labels)
 
             outputs = self.model(**batch_dict)
             h = outputs.last_hidden_state[:, 0, :]
             logits = self.model.predict_head(h) * self.t
+
             loss = self.criterion(logits.squeeze(), labels.float())
             losses.update(loss.item(), batch_size)
 
-            acc_labels = torch.zeros(batch_size//65, device=labels.device)
-            acc1, acc3, acc10 = self.accuracy(logits.reshape(-1, 65), acc_labels, topk=(1, 3, 10))
-            top1.update(acc1.item(), batch_size)
-            top3.update(acc3.item(), batch_size)
-            top10.update(acc10.item(), batch_size)
+            acc = accuracy(logits, labels)
+            metrics = compute_metric(logits, labels)
+            accs.update(acc.item(), batch_size)
 
-        metric_dict = {'Acc@1': round(top1.avg, 3),
-                       'Acc@3': round(top3.avg, 3),
-                       'Acc@10': round(top10.avg, 3),
+            mrr.update(metrics['mrr'], metrics['chunk_size'])
+            hit1.update(metrics['hit1'], metrics['chunk_size'])
+            hit3.update(metrics['hit3'], metrics['chunk_size'])
+            hit10.update(metrics['hit10'], metrics['chunk_size'])
+
+        metric_dict = {'acc': round(accs.avg, 3),
+                       'mrr': round(mrr.avg, 3),
+                       'hit1': round(hit1.avg, 3),
+                       'hit3': round(hit3.avg, 3),
+                       'hit10': round(hit10.avg, 3),
                        'loss': round(losses.avg, 3)}
         logger.info('Epoch {}, valid metric: {}'.format(self.epoch, json.dumps(metric_dict)))
         return metric_dict
 
     def train_one_epoch(self):
         losses = AverageMeter('Loss', ':.4')
-        top1 = AverageMeter('Acc@1', ':6.2f')
-        top3 = AverageMeter('Acc@3', ':6.2f')
+        accs = AverageMeter('Acc', ':6.2f')
         progress = ProgressMeter(
             len(self.train_loader),
-            [losses, top1, top3],
+            [losses, accs],
             prefix="Epoch: [{}]".format(self.epoch))
 
         for i, (batch_dict, labels) in enumerate(self.train_loader):
@@ -214,11 +225,9 @@ class Trainer:
             logits = self.model.predict_head(h) * self.t
             loss = self.criterion(logits.squeeze(), labels.float())
 
-            acc_labels = torch.zeros(batch_size//65, device=labels.device)
-            acc1, acc3 = self.accuracy(logits.reshape(-1, 65), acc_labels, topk=(1, 3))
-            top1.update(acc1.item(), batch_size)
-            top3.update(acc3.item(), batch_size)
+            acc = accuracy(logits, labels)
 
+            accs.update(acc.item(), batch_size)
             losses.update(loss.item(), batch_size)
 
             self.optimizer.zero_grad()
@@ -231,23 +240,6 @@ class Trainer:
                 progress.display(i)
             if (i + 1) % self.args.eval_every_n_steps == 0:
                 self.eval_loop(epoch=self.epoch, step=i + 1)
-
-    @staticmethod
-    def accuracy(output: torch.tensor, target: torch.tensor, topk=(1,)) -> List[torch.tensor]:
-        """Computes the accuracy over the k top predictions for the specified values of k"""
-        with torch.no_grad():
-            maxk = max(topk)
-            batch_size = target.size(0)
-            _, pred = output.topk(maxk, 1, True, True)
-            pred = pred.t()
-
-            correct = pred.eq(target.view(1, -1).expand_as(pred))
-
-            res = []
-            for k in topk:
-                correct_k = correct[:k].contiguous().view(-1).float().sum(0, keepdim=True)
-                res.append(correct_k.mul_(100.0 / batch_size))
-            return res
 
     @staticmethod
     def save_checkpoint(state: dict, is_best: bool, filename: str):

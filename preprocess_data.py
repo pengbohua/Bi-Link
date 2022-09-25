@@ -164,11 +164,8 @@ class EntityLinkingSet(Dataset):
     def load_mentions(self, mention_dir):
         with open(mention_dir, "r", encoding="utf-8") as m:
             mentions = json.load(m)
-        filtered_mentions = []
-        for entry in mentions:
-            filtered_mentions.append(self.filter_mention(entry))
-        logger.info("Loading {} mentions from {}".format(len(filtered_mentions), mention_dir))
-        return filtered_mentions
+        logger.info("Loading {} mentions from {}".format(len(mentions), mention_dir))
+        return mentions
 
     def reserve_topk_tf_idf_candidates(self):
         if not self.is_training:
@@ -212,9 +209,11 @@ class EntityLinkingSet(Dataset):
         mention_context, mention_start, mention_end = get_context_tokens(self.tokenizer,
             context_tokens, start_index, end_index, mention_length)
 
-        label_document = self.all_documents[label_document_id]['text']
-        pos_doc_dict = customized_tokenize(self.tokenizer, mention_context, label_document, cand_length,
-                                           self.max_seq_length, mention_start, mention_end)
+        label_idx = mention['label']
+        # label_id is now in candidates
+        # label_document = self.all_documents[label_document_id]['text']
+        # pos_doc_dict = customized_tokenize(self.tokenizer, mention_context, label_document, cand_length,
+        #                                    self.max_seq_length, mention_start, mention_end)
 
         # adding tf-idf candidates as negative samples
         cand_document_ids = self.candidates[mention_id]
@@ -225,18 +224,19 @@ class EntityLinkingSet(Dataset):
             cand_document_ids.extend(cand_document_ids)
         cand_document_ids = cand_document_ids[:self.num_candidates]
 
-        label_ids = [1]
-        doc_input_dicts = [pos_doc_dict]
-        doc_ids = [label_document_id]
+        label_ids = torch.zeros(len(cand_document_ids))
+        label_ids[label_idx].fill_(1)
+        label_ids = label_ids.long()
+
+        doc_input_dicts = []
+        doc_ids = []
         for cand_document_id in cand_document_ids:
             cand_document = self.all_documents[cand_document_id]['text']
-            neg_doc_dict = customized_tokenize(self.tokenizer, mention_context, cand_document, cand_length,
+            doc_dict = customized_tokenize(self.tokenizer, mention_context, cand_document, cand_length,
                                                self.max_seq_length, mention_start, mention_end)
-            doc_input_dicts.append(neg_doc_dict)
-            label_ids.append(0)
+            doc_input_dicts.append(doc_dict)
             doc_ids.append(cand_document_id)
 
-        label_ids = torch.LongTensor(label_ids)
         instance = NSPInstance(
             input_dicts=doc_input_dicts,
             label_ids=label_ids,
