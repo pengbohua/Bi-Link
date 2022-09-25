@@ -32,6 +32,8 @@ class TrainingArguments:
                             )
     warmup: int = field(default=500,
                         metadata={"help": "warmup steps"})
+    use_amp: bool = field(default=True,
+                        metadata={"help": "use mixed precision"})
     train_batch_size: int = field(default=2,
                         metadata={"help": "train batch size"})
     eval_batch_size: int = field(default=2,
@@ -74,8 +76,8 @@ class Trainer:
         self._setup_training()
 
         # loss and optimization
-        self.positive_weight = torch.FloatTensor([1, 20]).cuda()
-        self.criterion = nn.BCEWithLogitsLoss().cuda()
+        self.positive_weight = torch.FloatTensor([20.0]).cuda()
+        self.criterion = nn.BCEWithLogitsLoss(pos_weight=self.positive_weight).cuda()
         self.optimizer = AdamW([p for p in self.model.parameters() if p.requires_grad],
                                lr=self.args.learning_rate,
                                weight_decay=self.args.weight_decay)
@@ -112,6 +114,9 @@ class Trainer:
     def run(self):
         self.evaluate()
 
+        if self.args.use_amp:
+            self.scaler = torch.cuda.amp.GradScaler()
+
         for epoch in range(self.args.epochs):
             self.train_one_epoch()
             self.evaluate()
@@ -142,23 +147,17 @@ class Trainer:
                 with open(os.path.join(self.eval_model_path, "best_metric"), 'w', encoding='utf-8') as f:
                     f.write(json.dumps(metric_dict, indent=4))
 
-                self.save_checkpoint({
-                    'epoch': self.epoch,
-                    'args': self.args.__dict__,
-                    'state_dict': self.model.state_dict(),
-                }, is_best=True, filename="best_model.ckpt")
+                self.save_checkpoint({'state_dict': self.model.state_dict()}, is_best=True, filename="best_model.ckpt")
 
             else:
                 filename = '{}/checkpoint_{}_{}.ckpt'.format(self.eval_model_path, self.epoch, step)
-                self.save_checkpoint({
-                    'epoch': self.epoch,
-                    'args': self.args.__dict__,
-                    'state_dict': self.model.state_dict(),
-                    }, is_best=False, filename=filename)
+                self.save_checkpoint({'state_dict': self.model.state_dict()}, is_best=False, filename=filename)
+
+            self.delete_old_ckt(path_pattern='{}/checkpoint_*.ckpt'.format(self.eval_model_path),
+                       keep=self.args.max_weights_to_keep)
 
         logger.info(metric_dict)
-        self.delete_old_ckt(path_pattern='{}/checkpoint_*.ckpt'.format(self.eval_model_path),
-                       keep=self.args.max_weights_to_keep)
+
 
     @torch.no_grad()
     def eval_loop(self) -> Dict:
@@ -181,7 +180,7 @@ class Trainer:
 
             outputs = self.model(**batch_dict)
             h = outputs.last_hidden_state[:, 0, :]
-            logits = self.model.predict_head(h) * self.t
+            logits = self.get_model_obj(self.model).predict_head(h) * self.t
 
             loss = self.criterion(logits.squeeze(), labels.float())
             losses.update(loss.item(), batch_size)
@@ -220,9 +219,14 @@ class Trainer:
                 labels = labels.cuda()
             batch_size = len(labels)
 
-            outputs = self.model(**batch_dict)
+            if self.args.use_amp:
+                with torch.cuda.amp.autocast():
+                    outputs = self.model(**batch_dict)
+            else:
+                outputs = self.model(**batch_dict)
+
             h = outputs.last_hidden_state[:, 0, :]
-            logits = self.model.predict_head(h) * self.t
+            logits = self.get_model_obj(self.model).predict_head(h) * self.t
             loss = self.criterion(logits.squeeze(), labels.float())
 
             acc = accuracy(logits, labels)
@@ -231,8 +235,15 @@ class Trainer:
             losses.update(loss.item(), batch_size)
 
             self.optimizer.zero_grad()
-            loss.backward()
-            torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.args.grad_clip)
+            if self.args.use_amp:
+                self.scaler.scale(loss).backward()
+                self.scaler.unscale_(self.optimizer)
+                torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.args.grad_clip)
+                self.scaler.step(self.optimizer)
+                self.scaler.update()
+            else:
+                loss.backward()
+                torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.args.grad_clip)
             self.optimizer.step()
             self.scheduler.step()
 
@@ -240,6 +251,10 @@ class Trainer:
                 progress.display(i)
             if (i + 1) % self.args.eval_every_n_steps == 0:
                 self.eval_loop(epoch=self.epoch, step=i + 1)
+
+    @staticmethod
+    def get_model_obj(model: nn.Module):
+        return model.module if hasattr(model, "module") else model
 
     @staticmethod
     def save_checkpoint(state: dict, is_best: bool, filename: str):

@@ -4,8 +4,10 @@ import torch
 def compute_metric(logits: torch.tensor, labels: torch.tensor):
     batch_scores = logits.reshape(-1, 64)
     cs, num_cand = batch_scores.shape
-    batch_labels = labels.chunk(cs).argmax(1)   # cs, 1
-    batch_labels = batch_labels.expand(1, num_cand)
+
+    batch_labels = torch.stack(labels.chunk(cs), 0)
+    batch_labels = batch_labels.argmax(1, keepdim=True)  # cs, 1
+    batch_labels = batch_labels.expand(cs, num_cand)
 
     batch_sorted_score, batch_sorted_indices = torch.sort(batch_scores, dim=-1, descending=True)
     target_rank = torch.nonzero(batch_sorted_indices.eq(batch_labels).long(), as_tuple=False)
