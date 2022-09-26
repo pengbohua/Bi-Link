@@ -12,7 +12,6 @@ from preprocess_data import collate
 from utils import AverageMeter, ProgressMeter, logger
 from transformers import BertModel, AutoConfig
 from dataclasses import dataclass, field
-from metrics import accuracy, compute_metric
 
 curr_time = time.strftime("%Y-%m-%d-%H-%M-%S", time.localtime(time.time()))
 
@@ -32,8 +31,6 @@ class TrainingArguments:
                             )
     warmup: int = field(default=500,
                         metadata={"help": "warmup steps"})
-    use_amp: bool = field(default=True,
-                        metadata={"help": "use mixed precision"})
     train_batch_size: int = field(default=2,
                         metadata={"help": "train batch size"})
     eval_batch_size: int = field(default=2,
@@ -71,12 +68,17 @@ class Trainer:
         self.model._init_weights(new_token_type_embeddings)
         new_token_type_embeddings.weight.data[:old_type_vocab_size, :] = self.model.embeddings.token_type_embeddings.weight.data[:old_type_vocab_size, :]
         self.model.embeddings.token_type_embeddings = new_token_type_embeddings
-        self.model.predict_head = nn.Linear(self.config.hidden_size, 1)
-        self.t = 1
+        self.model.mlm_head = nn.Sequential(
+                                    nn.Linear(self.config.hidden_size, self.config.hidden_size),
+                                    nn.GELU(),
+                                    nn.LayerNorm(self.config.hidden_size, eps=1e-12),
+                                    nn.Linear(self.config.hidden_size, self.config.vocab_size, bias=False)
+                                )
+        # self.t = 20
         self._setup_training()
 
         # loss and optimization
-        self.criterion = nn.BCEWithLogitsLoss().cuda()
+        self.criterion = nn.CrossEntropyLoss(ignore_index=train_dataset.tokenizer.pad_token_id).cuda()
         self.optimizer = AdamW([p for p in self.model.parameters() if p.requires_grad],
                                lr=self.args.learning_rate,
                                weight_decay=self.args.weight_decay)
@@ -92,6 +94,7 @@ class Trainer:
         self.is_training = True
         self.best_metric = None
         self.epoch = 0
+        self.mask_token_id = train_dataset.tokenizer.mask_token_id
         # dataloader
         self.train_loader = torch.utils.data.DataLoader(
             train_dataset,
@@ -111,13 +114,12 @@ class Trainer:
                 pin_memory=True)
 
     def run(self):
-        if self.args.use_amp:
-            self.scaler = torch.cuda.amp.GradScaler()
 
         for epoch in range(self.args.epochs):
             self.train_one_epoch()
             self.evaluate()
             self.epoch = epoch
+        print("Training finished!")
 
     @staticmethod
     def move_to_cuda(sample):
@@ -143,104 +145,101 @@ class Trainer:
                 self.best_metric = metric_dict
                 with open(os.path.join(self.eval_model_path, "best_metric"), 'w', encoding='utf-8') as f:
                     f.write(json.dumps(metric_dict, indent=4))
-
-                self.save_checkpoint({'state_dict': self.model.state_dict()}, is_best=True, filename="best_model.ckpt")
+                self.save_checkpoint({
+                    'epoch': self.epoch,
+                    'state_dict': self.model.state_dict(),
+                }, is_best=True, filename="best_model.ckpt")
 
             else:
                 filename = '{}/checkpoint_{}_{}.ckpt'.format(self.eval_model_path, self.epoch, step)
-                self.save_checkpoint({'state_dict': self.model.state_dict()}, is_best=False, filename=filename)
-
-            self.delete_old_ckt(path_pattern='{}/checkpoint_*.ckpt'.format(self.eval_model_path),
-                       keep=self.args.max_weights_to_keep)
+                self.save_checkpoint({
+                    'epoch': self.epoch,
+                    'state_dict': self.model.state_dict(),
+                    }, is_best=False, filename=filename)
 
         logger.info(metric_dict)
-
+        self.delete_old_ckt(path_pattern='{}/checkpoint_*.ckpt'.format(self.eval_model_path),
+                       keep=self.args.max_weights_to_keep)
 
     @torch.no_grad()
     def eval_loop(self) -> Dict:
 
         losses = AverageMeter('Loss', ':.4')
-        accs = AverageMeter('Acc', ':6.2f')
-        hit1 = AverageMeter('hit1', ':6.2f')
-        hit3 = AverageMeter('hit3', ':6.2f')
-        hit10 = AverageMeter('hit10', ':6.2f')
-        mrr = AverageMeter('MRR', ':6.2f')
+        top1 = AverageMeter('Acc@1', ':6.2f')
 
-
-        for i, (batch_dict, labels) in enumerate(self.valid_loader):
+        for i, (batch_dict, raw_input_ids) in enumerate(self.valid_loader):
             self.model.eval()
 
             if torch.cuda.is_available():
                 batch_dict = self.move_to_cuda(batch_dict)
-                labels = labels.cuda(non_blocking=True)
-            batch_size = len(labels)
+                raw_input_ids = self.move_to_cuda(raw_input_ids)
+            batch_size = len(batch_dict['input_ids'])
 
             outputs = self.model(**batch_dict)
-            h = outputs.last_hidden_state[:, 0, :]
-            logits = self.get_model_obj(self.model).predict_head(h) * self.t
+            input_ids = batch_dict["input_ids"]
+            labels = raw_input_ids[input_ids == self.mask_token_id].view(-1)
+            
+            h = outputs.last_hidden_state[input_ids == self.mask_token_id]
+            logits = self.model.mlm_head(h) 
+            loss = self.criterion(logits.squeeze(), labels.long())
+             # mask mention with [unused1]. see preprocess_data.py line 134
+            mt_labels = raw_input_ids[input_ids == 1]
+            mt_h = outputs.last_hidden_state[input_ids == 1]
+            mt_logits = self.model.mlm_head(mt_h) 
+            mt_loss = self.criterion(mt_logits.squeeze(), mt_labels.long())
+            # focus on only mention loss and acc
+            acc = mt_logits.max(dim=1)[1].eq(mt_labels.squeeze()).sum()
+            acc = acc * 100 / mt_logits.size(0)
+            top1.update(acc.item(), batch_size)
+            losses.update(mt_loss.item(), batch_size)
 
-            loss = self.criterion(logits.squeeze(), labels.float())
-            losses.update(loss.item(), batch_size)
-
-            acc = accuracy(logits, labels)
-            metrics = compute_metric(logits, labels)
-            accs.update(acc.item(), batch_size//64)
-
-            mrr.update(metrics['mrr'], metrics['chunk_size'])
-            hit1.update(metrics['hit1'], metrics['chunk_size'])
-            hit3.update(metrics['hit3'], metrics['chunk_size'])
-            hit10.update(metrics['hit10'], metrics['chunk_size'])
-
-        metric_dict = {'acc': round(accs.avg, 3),
-                       'mrr': round(mrr.avg, 3),
-                       'hit1': round(hit1.avg, 3),
-                       'hit3': round(hit3.avg, 3),
-                       'hit10': round(hit10.avg, 3),
+        metric_dict = {'Acc@1': round(top1.avg, 3),
                        'loss': round(losses.avg, 3)}
         logger.info('Epoch {}, valid metric: {}'.format(self.epoch, json.dumps(metric_dict)))
         return metric_dict
 
     def train_one_epoch(self):
         losses = AverageMeter('Loss', ':.4')
-        accs = AverageMeter('Acc', ':6.2f')
+        top1 = AverageMeter('Acc@1', ':6.2f')
+        # top3 = AverageMeter('Acc@3', ':6.2f')
         progress = ProgressMeter(
             len(self.train_loader),
-            [losses, accs],
+            [losses, top1],
             prefix="Epoch: [{}]".format(self.epoch))
 
-        for i, (batch_dict, labels) in enumerate(self.train_loader):
+        for i, (batch_dict, raw_input_ids) in enumerate(self.train_loader):
             self.model.train()
 
             if torch.cuda.is_available():
                 batch_dict = self.move_to_cuda(batch_dict)
-                labels = labels.cuda()
-            batch_size = len(labels)
+                raw_input_ids = self.move_to_cuda(raw_input_ids)
+            input_ids = batch_dict["input_ids"]
+            batch_size = len(input_ids)
 
-            if self.args.use_amp:
-                with torch.cuda.amp.autocast():
-                    outputs = self.model(**batch_dict)
-            else:
-                outputs = self.model(**batch_dict)
+            outputs = self.model(**batch_dict)
+            input_ids = batch_dict["input_ids"]
 
-            h = outputs.last_hidden_state[:, 0, :]
-            logits = self.get_model_obj(self.model).predict_head(h) * self.t
-            loss = self.criterion(logits.squeeze(), labels.float())
-
-            acc = accuracy(logits, labels)
-
-            accs.update(acc.item(), batch_size // 64)
-            losses.update(loss.item(), batch_size)
+            labels = raw_input_ids[input_ids == self.mask_token_id].view(-1)
+            h = outputs.last_hidden_state[input_ids == self.mask_token_id]
+            logits = self.model.mlm_head(h) 
+            loss = self.criterion(logits.squeeze(), labels.long())
+            # mask mention with [unused1]. see preprocess_data.py line 134
+            mt_labels = raw_input_ids[input_ids == 1]
+            mt_h = outputs.last_hidden_state[input_ids == 1]
+            mt_logits = self.model.mlm_head(mt_h)
+            mt_loss = self.criterion(mt_logits.squeeze(), mt_labels.long())
+            # mention_mlm_loss + mention_context_mlm_loss
+            loss += mt_loss
+            acc = mt_logits.max(dim=1)[1].eq(mt_labels.squeeze()).sum()
+            
+            acc = acc * 100.0 / float(mt_h.size(0))
+            # only update mention loss and acc
+            top1.update(acc.item(), batch_size)
+            losses.update(mt_loss.item(), batch_size)
 
             self.optimizer.zero_grad()
-            if self.args.use_amp:
-                self.scaler.scale(loss).backward()
-                self.scaler.unscale_(self.optimizer)
-                torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.args.grad_clip)
-                self.scaler.step(self.optimizer)
-                self.scaler.update()
-            else:
-                loss.backward()
-                torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.args.grad_clip)
+            loss.backward()
+            torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.args.grad_clip)
             self.optimizer.step()
             self.scheduler.step()
 
@@ -250,8 +249,21 @@ class Trainer:
                 self.eval_loop()
 
     @staticmethod
-    def get_model_obj(model: nn.Module):
-        return model.module if hasattr(model, "module") else model
+    def accuracy(output: torch.tensor, target: torch.tensor, topk=(1,)) -> List[torch.tensor]:
+        """Computes the accuracy over the k top predictions for the specified values of k"""
+        with torch.no_grad():
+            maxk = max(topk)
+            batch_size = target.size(0)
+            _, pred = output.topk(maxk, 1, True, True)
+            pred = pred.t()
+
+            correct = pred.eq(target.view(1, -1).expand_as(pred))
+
+            res = []
+            for k in topk:
+                correct_k = correct[:k].contiguous().view(-1).float().sum(0, keepdim=True)
+                res.append(correct_k.mul_(100.0 / batch_size))
+            return res
 
     @staticmethod
     def save_checkpoint(state: dict, is_best: bool, filename: str):
@@ -275,4 +287,3 @@ class Trainer:
             self.model.cuda()
         else:
             logger.info("Training with CPU")
-

@@ -29,18 +29,18 @@ def get_args():
         "--split-by-domain", default=False, type=bool,
         help="Split output data file by domain.")
 
-    parser.add_argument("--learning-rate", default=1e-5, type=float,
+    parser.add_argument("--learning-rate", default=5e-5, type=float,
                         help="learning rate for optimization")
     parser.add_argument("--weight-decay", default=1e-4, type=float,
                         help="weight decay for optimization")
-    parser.add_argument("--epochs", default=3, type=int,
+    parser.add_argument("--epochs", default=5, type=int,
                         help="weight decay for optimization")
-    parser.add_argument("--train-batch-size", default=16, type=int,
+    parser.add_argument("--train-batch-size", default=32, type=int,
                         help="train batch size")
     parser.add_argument("--eval-batch-size", default=128, type=int,
                         help="train batch size")
 
-    parser.add_argument("--max-seq-length", default=128, type=int, help="Maximum sequence length.")
+    parser.add_argument("--max-seq-length", default=256, type=int, help="Maximum sequence length.")
 
     parser.add_argument("--num-candidates", default=64, type=int, help="Number of entity candidates.")
 
@@ -65,6 +65,7 @@ def main():
     train_args.learning_rate = args.learning_rate
     train_args.train_batch_size = args.train_batch_size
     train_args.eval_batch_size = args.eval_batch_size
+    train_args.epochs = args.epochs
 
     all_documents = {}      # doc_id/ entity_id to entity
     document_path = args.document_files[0].split(",")
