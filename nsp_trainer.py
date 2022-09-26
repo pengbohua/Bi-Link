@@ -30,6 +30,9 @@ class TrainingArguments:
     epochs: int = field(default=3,
                             metadata={"help": "number of training epochs"}
                             )
+    num_cand: int = field(default=64,
+                            metadata={"help": "number of negative samples"}
+                            )
     warmup: int = field(default=500,
                         metadata={"help": "warmup steps"})
     use_amp: bool = field(default=True,
@@ -57,6 +60,7 @@ class Trainer:
                  ):
         # training arguments
         self.args = train_args
+        self.num_candidates = self.args.num_cand
         self.pretrained_model_path = pretrained_model_path
         self.eval_model_path = eval_model_path + "/" + curr_time
         os.makedirs(self.eval_model_path, exist_ok=True)
@@ -76,7 +80,10 @@ class Trainer:
         self._setup_training()
 
         # loss and optimization
-        self.criterion = nn.BCEWithLogitsLoss().cuda()
+        self.positive_weight = torch.FloatTensor([8]).cuda()     # neg counts / pos counts
+        self.criterion = nn.BCEWithLogitsLoss(pos_weight=self.positive_weight).cuda()
+        # self.criterion = nn.BCEWithLogitsLoss().cuda()
+
         self.optimizer = AdamW([p for p in self.model.parameters() if p.requires_grad],
                                lr=self.args.learning_rate,
                                weight_decay=self.args.weight_decay)
@@ -105,7 +112,7 @@ class Trainer:
         self.valid_loader = torch.utils.data.DataLoader(
                 eval_dataset,
                 batch_size=self.args.eval_batch_size,
-                shuffle=True,
+                shuffle=False,
                 collate_fn=collate,
                 num_workers=num_workers,
                 pin_memory=True)
@@ -117,7 +124,7 @@ class Trainer:
         for epoch in range(self.args.epochs):
             self.train_one_epoch()
             self.evaluate()
-            self.epoch = epoch
+            self.epoch += 1
 
     @staticmethod
     def move_to_cuda(sample):
@@ -139,12 +146,13 @@ class Trainer:
             metric_dict = self.eval_loop()
         else:
             metric_dict = self.eval_loop()
-            if self.best_metric is None or metric_dict['Acc@1'] > self.best_metric['Acc@1']:
+            if self.best_metric is None or metric_dict['hit1'] > self.best_metric['hit1']:
                 self.best_metric = metric_dict
                 with open(os.path.join(self.eval_model_path, "best_metric"), 'w', encoding='utf-8') as f:
                     f.write(json.dumps(metric_dict, indent=4))
 
-                self.save_checkpoint({'state_dict': self.model.state_dict()}, is_best=True, filename="best_model.ckpt")
+                self.save_checkpoint({'state_dict': self.model.state_dict()},
+                                     is_best=True, filename=os.path.join(self.eval_model_path, "best_model.ckpt"))
 
             else:
                 filename = '{}/checkpoint_{}_{}.ckpt'.format(self.eval_model_path, self.epoch, step)
@@ -184,7 +192,7 @@ class Trainer:
 
             acc = accuracy(logits, labels)
             metrics = compute_metric(logits, labels)
-            accs.update(acc.item(), batch_size//64)
+            accs.update(acc.item(), batch_size//self.num_candidates)
 
             mrr.update(metrics['mrr'], metrics['chunk_size'])
             hit1.update(metrics['hit1'], metrics['chunk_size'])
@@ -228,7 +236,7 @@ class Trainer:
 
             acc = accuracy(logits, labels)
 
-            accs.update(acc.item(), batch_size // 64)
+            accs.update(acc.item(), batch_size // self.num_candidates)
             losses.update(loss.item(), batch_size)
 
             self.optimizer.zero_grad()
@@ -247,7 +255,7 @@ class Trainer:
             if i % self.args.log_every_n_steps == 0:
                 progress.display(i)
             if (i + 1) % self.args.eval_every_n_steps == 0:
-                self.eval_loop()
+                self.evaluate(step=i)
 
     @staticmethod
     def get_model_obj(model: nn.Module):

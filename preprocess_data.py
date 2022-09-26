@@ -26,14 +26,6 @@ class NSPInstance(object):
     doc_ids : List[str]
     corpus : str
 
-@dataclass
-class CLInstance(object):
-    """A single set of features for EL as a contrastive learning task"""
-    input_dicts: List[Dict]
-    label_ids : tensor
-    mention_id : str
-    doc_ids : List[str]
-    corpus : str
 
 def load_candidates(input_dir):
     documents = {}
@@ -102,15 +94,16 @@ def pad_sequence(tokens, max_len):
     assert len(tokens) <= max_len
     return tokens + [0]*(max_len - len(tokens))
 
-def customized_tokenize(tokenizer, token_a, text_pair_b, text_pair_b_max_len, max_seq_length, mention_start,
-                        mention_end, return_tensor="pt"):
+def customized_tokenize(tokenizer, token_a, text_pair_b, text_pair_b_max_len, max_seq_length, mention_start=None,
+                        mention_end=None, return_tensor="pt"):
     token_pair_b = tokenizer.tokenize(text=text_pair_b)[:text_pair_b_max_len]
     tokens = ["CLS"] + token_a + ["SEP"] + token_pair_b + ["SEP"]
 
     input_ids = tokenizer.convert_tokens_to_ids(tokens)
     token_type_ids = [0]*(len(token_a)+2)+[1]*(len(token_pair_b)+1)
-    for idx in range(mention_start+1, mention_end+1):
-        token_type_ids[idx] = 2
+    if mention_start and mention_end:
+        for idx in range(mention_start+1, mention_end+1):
+            token_type_ids[idx] = 2
     #  set mention span as 2 ["CLS"]
     attention_mask = [1]*len(input_ids)
 
@@ -212,18 +205,12 @@ class EntityLinkingSet(Dataset):
         label_idx = mention['label']
         # label_id is now in candidates
         # label_document = self.all_documents[label_document_id]['text']
-        # pos_doc_dict = customized_tokenize(self.tokenizer, mention_context, label_document, cand_length,
-        #                                    self.max_seq_length, mention_start, mention_end)
 
-        # adding tf-idf candidates as negative samples
+        # adding tf-idf candidates as negative samples with label_id
         cand_document_ids = self.candidates[mention_id]
-        cand_document_ids = [cand for cand in cand_document_ids if cand != label_document_id]
-
-        # copy docs to args.num_cands
-        while len(cand_document_ids) < self.num_candidates:
-            cand_document_ids.extend(cand_document_ids)
         cand_document_ids = cand_document_ids[:self.num_candidates]
 
+        # label for nsp prediction
         label_ids = torch.zeros(len(cand_document_ids))
         label_ids[label_idx].fill_(1)
         label_ids = label_ids.long()
@@ -233,7 +220,7 @@ class EntityLinkingSet(Dataset):
         for cand_document_id in cand_document_ids:
             cand_document = self.all_documents[cand_document_id]['text']
             doc_dict = customized_tokenize(self.tokenizer, mention_context, cand_document, cand_length,
-                                               self.max_seq_length, mention_start, mention_end)
+                                               self.max_seq_length,)
             doc_input_dicts.append(doc_dict)
             doc_ids.append(cand_document_id)
 

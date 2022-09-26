@@ -38,5 +38,5 @@ def compute_metric(logits: torch.tensor, labels: torch.tensor):
 
 @torch.no_grad()
 def accuracy(logits, labels):
-    predictions = torch.ge(logits, 0).long()
+    predictions = torch.ge(logits, 0).long().squeeze(1)
     return torch.sum(torch.eq(predictions, labels)) / len(labels)

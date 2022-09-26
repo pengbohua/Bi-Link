@@ -65,6 +65,7 @@ def main():
     train_args.learning_rate = args.learning_rate
     train_args.train_batch_size = args.train_batch_size
     train_args.eval_batch_size = args.eval_batch_size
+    train_args.num_cand = args.num_candidates
 
     all_documents = {}      # doc_id/ entity_id to entity
     document_path = args.document_files[0].split(",")

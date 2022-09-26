@@ -1,16 +1,20 @@
 import torch.nn as nn
 import torch.utils.data
+import time
 import json
 import torch
-
-from typing import Dict
+import os
+import shutil
+import glob
+from typing import Dict, List
 from transformers import AdamW, get_linear_schedule_with_warmup
 from preprocess_data import collate
 from utils import AverageMeter, ProgressMeter, logger
-from metric import accuracy
-from transformers import AutoModel, AutoConfig
-from utils import logger
+from transformers import BertModel, AutoConfig
 from dataclasses import dataclass, field
+from metrics import accuracy, compute_metric
+
+curr_time = time.strftime("%Y-%m-%d-%H-%M-%S", time.localtime(time.time()))
 
 @dataclass
 class TrainingArguments:
@@ -20,36 +24,56 @@ class TrainingArguments:
     weight_decay: float = field(default=1e-4,
                             metadata={"help": "weight decay parameter for optimization"}
                             )
+    grad_clip: float = field(default=10,
+                            metadata={"help": "magnitude for gradient clipping"}
+                            )
     epochs: int = field(default=3,
                             metadata={"help": "number of training epochs"}
                             )
+    num_cand: int = field(default=64,
+                            metadata={"help": "number of negative samples"}
+                            )
     warmup: int = field(default=500,
                         metadata={"help": "warmup steps"})
-    train_batch_size: int = field(default=128,
+    use_amp: bool = field(default=True,
+                        metadata={"help": "use mixed precision"})
+    train_batch_size: int = field(default=2,
                         metadata={"help": "train batch size"})
-    eval_batch_size: int = field(default=128,
+    eval_batch_size: int = field(default=2,
                         metadata={"help": "eval batch size"})
+    eval_every_n_steps: int = field(default=1000,
+                        metadata={"help": "eval every n steps"})
+    log_every_n_steps: int = field(default=100,
+                        metadata={"help": "log every n steps"})
+    max_weights_to_keep: int = field(default=3,
+                                     metadata={"help": "max number of weight file to keep"})
 
 class Trainer:
 
     def __init__(self,
                  pretrained_model_path,
+                 eval_model_path,
                  train_dataset,
                  eval_dataset,
-                 train_args: TrainingArguments
+                 num_workers=4,
+                 train_args: TrainingArguments = None
                  ):
-
-        self.args=train_args
+        # training arguments
+        self.args = train_args
+        self.num_candidates = self.args.num_cand
+        self.pretrained_model_path = pretrained_model_path
+        self.eval_model_path = eval_model_path + "/" + curr_time
+        os.makedirs(self.eval_model_path, exist_ok=True)
         # create model
         logger.info("Creating model")
         self.config = AutoConfig.from_pretrained(pretrained_model_path)
-        self.model = AutoModel.from_pretrained(pretrained_model_path)
-        # adding mention span token type ids
+        self.model = BertModel.from_pretrained(pretrained_model_path)
+        # adding mention span as a new type to token type ids
         old_type_vocab_size = self.config.type_vocab_size
         self.config.type_vocab_size = 3
         new_token_type_embeddings = nn.Embedding(self.config.type_vocab_size, self.config.hidden_size)
         self.model._init_weights(new_token_type_embeddings)
-        new_token_type_embeddings.weight.data[:old_type_vocab_size, :] = self.model.embeddings.token_type_embeddings[:old_type_vocab_size, :]
+        new_token_type_embeddings.weight.data[:old_type_vocab_size, :] = self.model.embeddings.token_type_embeddings.weight.data[:old_type_vocab_size, :]
         self.model.embeddings.token_type_embeddings = new_token_type_embeddings
         self._setup_training()
 
