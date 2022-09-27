@@ -50,6 +50,8 @@ class TrainingArguments:
                         metadata={"help": "log every n steps"})
     max_weights_to_keep: int = field(default=3,
                                      metadata={"help": "max number of weight file to keep"})
+    cut_off_negative_gradients: bool = field(default=bool,
+                                             metadata={"help": "cut off gradient flow to negative samples"})
 
 class Trainer:
 
@@ -110,7 +112,6 @@ class Trainer:
         if self.args.use_amp:
             self.scaler = torch.cuda.amp.GradScaler()
 
-        self.evaluate()
         for epoch in range(self.args.epochs):
             self.train_one_epoch()
             self.evaluate()
@@ -222,8 +223,8 @@ class Trainer:
             # compute output
 
             output_dicts = self.model(mention_dicts=mention_dicts, entity_dicts=entity_dicts, candidate_dict_list=candidate_dicts)
-            logits = output_dicts["logits"]
-            labels = output_dicts["labels"]
+            logits = self.get_model_obj(self.model).compute_logits(**output_dicts)
+            labels = torch.arange(len(logits)).to(logits.device)
 
             predictions = logits.argmax(1)
             _acc = torch.sum(torch.eq(predictions, labels)) / len(labels)

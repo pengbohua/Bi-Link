@@ -257,15 +257,23 @@ def compose_collate(batch_cl_data: List[CLInstance]):
     labels = [cl_data.label for cl_data in batch_cl_data]
     labels = torch.cat(labels, 0)
 
-    candidate_dict_list = []
+    input_ids = []
+    attention_mask = []
+    token_type_ids = []
+
     for cl_data in batch_cl_data:
-        cand_dict_list = cl_data.candidate_dicts        # 63, hidden_dim
+        cand_dict_list = cl_data.candidate_dicts
         _cand_dict = collate(cand_dict_list)
-        candidate_dict_list.append(_cand_dict)
+        input_ids.append(_cand_dict['input_ids'])
+        attention_mask.append(_cand_dict['attention_mask'])
+        token_type_ids.append(_cand_dict['token_type_ids'])
 
     return {
         "mention_dicts": mention_dicts,
         "entity_dicts": label_dicts,
         "labels": labels,
-        "candidate_dicts": candidate_dict_list
+        "candidate_dicts": {"input_ids": torch.stack(input_ids, 0),
+                            "attention_mask": torch.stack(attention_mask, 0),
+                            "token_type_ids": torch.stack(token_type_ids, 0)
+                            }
     }

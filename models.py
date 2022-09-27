@@ -25,7 +25,7 @@ class EntityLinker(nn.Module):
         self.mention_encoder.embeddings.token_type_embeddings = new_token_type_embeddings
 
         self.pooling = 'mean'
-        self.additive_margin = 0.02
+        self.additive_margin = 0.0
         self.inv_t = torch.tensor(0.05, requires_grad=False)
 
     def encode(self, encoder, input_ids, attention_mask, token_type_ids):
@@ -65,38 +65,45 @@ class EntityLinker(nn.Module):
             return entity_embeddings
 
         bs = len(mention_dicts['input_ids'])
-        labels = torch.arange(bs).to(mention_dicts['input_ids'].device)
 
         # contrastive learning
         mention_vectors = self.encode(self.mention_encoder, **mention_dicts)
         entity_vectors = self.encode(self.entity_encoder, **entity_dicts)
 
+        assert len(candidate_dict_list["input_ids"])==bs
         candidate_vectors = []
-        for candidate_dict in candidate_dict_list:
-            cand_vec = self.encode(self.entity_encoder, **candidate_dict)  # N negative sample for a single mention
+        for i in range(len(mention_vectors)):
+            cur_candidate_dict = {"input_ids": candidate_dict_list["input_ids"][i],
+                                "attention_mask": candidate_dict_list["attention_mask"][i],
+                                "token_type_ids": candidate_dict_list["token_type_ids"][i],
+            }
+            cand_vec = self.encode(self.entity_encoder, **cur_candidate_dict)  # N negative sample for a single mention
             candidate_vectors.append(cand_vec)
 
+        if candidate_vectors is not None:
+            candidate_vectors = torch.stack(candidate_vectors, 0)       # bs, num_cand, hidden_dim
+            negative_logits = torch.matmul(mention_vectors.view(bs, 1, self.hidden_size), candidate_vectors.permute(0, 2, 1)).squeeze(1)
+        else:
+            negative_logits = None
+
+        return {
+                "mention_vectors": mention_vectors,
+                "entity_vectors": entity_vectors,
+                "negative_logits": negative_logits,
+                }
+
+    def compute_logits(self, mention_vectors, entity_vectors, negative_logits):
         cosine = mention_vectors.mm(entity_vectors.t())
         if self.training:
             logits = cosine - torch.zeros_like(cosine, device=cosine.device).fill_diagonal_(self.additive_margin)
         else:
             logits = cosine
 
-        if candidate_vectors is not None:
-            candidate_vectors = torch.stack(candidate_vectors, 0)       # bs, num_cand, hidden_dim
-            mention_vectors = mention_vectors.view(bs, 1, self.hidden_size)
-            negative_logits = torch.matmul(mention_vectors, candidate_vectors.permute(0, 2, 1)).squeeze(1)
-            logits = torch.cat([logits, negative_logits], 1)
-
+        if negative_logits is not None:
+            assert len(logits) == len(negative_logits)
+            logits = torch.cat([logits, negative_logits], 1)       # bs, num_cand, hidden_dim
         logits = logits * self.inv_t
-
-        return {"logits": logits,
-                "labels": labels,
-                "deep_embs": {"mention_vectors": mention_vectors,
-                              "entity_vectors": entity_vectors,
-                              "candidate_vectors": candidate_vectors,
-                              },
-                }
+        return logits
 
     @torch.no_grad()
     def predict(self, mention_dicts, candidate_dicts_list, labels):
