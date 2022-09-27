@@ -1,3 +1,4 @@
+from cProfile import label
 import torch.nn as nn
 import torch.utils.data
 import time
@@ -9,9 +10,11 @@ import glob
 from typing import Dict, List
 from transformers import AdamW, get_linear_schedule_with_warmup
 from preprocess_data import collate
-from utils import AverageMeter, ProgressMeter, logger
+from utils import AverageMeter, ProgressMeter, logger, compute_mlm_batch_scores
 from transformers import BertModel, AutoConfig
 from dataclasses import dataclass, field
+from metrics import compute_metric
+from tqdm import tqdm
 
 curr_time = time.strftime("%Y-%m-%d-%H-%M-%S", time.localtime(time.time()))
 
@@ -49,7 +52,7 @@ class Trainer:
                  eval_model_path,
                  train_dataset,
                  eval_dataset,
-                 num_workers=4,
+                 num_workers=1,
                  train_args: TrainingArguments = None
                  ):
         # training arguments
@@ -68,15 +71,16 @@ class Trainer:
         self.model._init_weights(new_token_type_embeddings)
         new_token_type_embeddings.weight.data[:old_type_vocab_size, :] = self.model.embeddings.token_type_embeddings.weight.data[:old_type_vocab_size, :]
         self.model.embeddings.token_type_embeddings = new_token_type_embeddings
-        self.model.mlm_head = nn.Sequential(
-                                    nn.Linear(self.config.hidden_size, self.config.hidden_size),
-                                    nn.GELU(),
-                                    nn.LayerNorm(self.config.hidden_size, eps=1e-12),
-                                    nn.Linear(self.config.hidden_size, self.config.vocab_size, bias=False)
+        self.model.classification_head = nn.Sequential(
+                                    nn.Linear(self.config.hidden_size, 2)
                                 )
+        self.model.b_embedding = nn.Embedding(self.config.vocab_size, self.config.hidden_size, sparse=False)
+        self.model.b_embedding.weight.data = self.model.embeddings.word_embeddings.weight.data
+        print(self.model.b_embedding.weight.data.shape)
+        print(self.model.embeddings.word_embeddings.weight.data.shape)
         # self.t = 20
         self._setup_training()
-
+        
         # loss and optimization
         self.criterion = nn.CrossEntropyLoss(ignore_index=train_dataset.tokenizer.pad_token_id).cuda()
         self.optimizer = AdamW([p for p in self.model.parameters() if p.requires_grad],
@@ -95,6 +99,7 @@ class Trainer:
         self.best_metric = None
         self.epoch = 0
         self.mask_token_id = train_dataset.tokenizer.mask_token_id
+        self.pad_token_id = train_dataset.tokenizer.pad_token_id
         # dataloader
         self.train_loader = torch.utils.data.DataLoader(
             train_dataset,
@@ -112,13 +117,23 @@ class Trainer:
                 collate_fn=collate,
                 num_workers=num_workers,
                 pin_memory=True)
+        
+        self.valid_loader = torch.utils.data.DataLoader(
+                eval_dataset,
+                batch_size=self.args.eval_batch_size,
+                shuffle=True,
+                collate_fn=collate,
+                num_workers=num_workers,
+                pin_memory=True)
 
     def run(self):
 
         for epoch in range(self.args.epochs):
-            self.train_one_epoch()
-            self.evaluate()
             self.epoch = epoch
+            
+            self.train_one_epoch()
+            if epoch >= 2:
+                self.evaluate()
         print("Training finished!")
 
     @staticmethod
@@ -138,10 +153,10 @@ class Trainer:
     @torch.no_grad()
     def evaluate(self, step=0):
         if not self.is_training:
-            metric_dict = self.eval_loop()
+            metric_dict = self.mlm_eval_loop()
         else:
-            metric_dict = self.eval_loop()
-            if self.best_metric is None or metric_dict['Acc@1'] > self.best_metric['Acc@1']:
+            metric_dict = self.mlm_eval_loop()
+            if self.best_metric is None or metric_dict['hit1'] > self.best_metric['hit1']:
                 self.best_metric = metric_dict
                 with open(os.path.join(self.eval_model_path, "best_metric"), 'w', encoding='utf-8') as f:
                     f.write(json.dumps(metric_dict, indent=4))
@@ -160,40 +175,51 @@ class Trainer:
         logger.info(metric_dict)
         self.delete_old_ckt(path_pattern='{}/checkpoint_*.ckpt'.format(self.eval_model_path),
                        keep=self.args.max_weights_to_keep)
-
+    
     @torch.no_grad()
-    def eval_loop(self) -> Dict:
+    def mlm_eval_loop(self) -> Dict:
 
         losses = AverageMeter('Loss', ':.4')
-        top1 = AverageMeter('Acc@1', ':6.2f')
-
-        for i, (batch_dict, raw_input_ids) in enumerate(self.valid_loader):
+        accs = AverageMeter('Acc', ':6.2f')
+        hit1 = AverageMeter('hit1', ':6.2f')
+        hit3 = AverageMeter('hit3', ':6.2f')
+        hit10 = AverageMeter('hit10', ':6.2f')
+        mrr = AverageMeter('MRR', ':6.2f')
+        
+        for i, (batch_dict, raw_input_ids, labels) in tqdm(enumerate(self.valid_loader)):
             self.model.eval()
-
+            if i > 100:
+                break
             if torch.cuda.is_available():
                 batch_dict = self.move_to_cuda(batch_dict)
                 raw_input_ids = self.move_to_cuda(raw_input_ids)
+                labels = self.move_to_cuda(labels)
             batch_size = len(batch_dict['input_ids'])
 
             outputs = self.model(**batch_dict)
             input_ids = batch_dict["input_ids"]
-            labels = raw_input_ids[input_ids == self.mask_token_id].view(-1)
-            
-            h = outputs.last_hidden_state[input_ids == self.mask_token_id]
-            logits = self.model.mlm_head(h) 
-            loss = self.criterion(logits.squeeze(), labels.long())
-             # mask mention with [unused1]. see preprocess_data.py line 134
-            mt_labels = raw_input_ids[input_ids == 1]
-            mt_h = outputs.last_hidden_state[input_ids == 1]
-            mt_logits = self.model.mlm_head(mt_h) 
-            mt_loss = self.criterion(mt_logits.squeeze(), mt_labels.long())
-            # focus on only mention loss and acc
-            acc = mt_logits.max(dim=1)[1].eq(mt_labels.squeeze()).sum()
-            acc = acc * 100 / mt_logits.size(0)
-            top1.update(acc.item(), batch_size)
-            losses.update(mt_loss.item(), batch_size)
 
-        metric_dict = {'Acc@1': round(top1.avg, 3),
+            # do not use mask for prediction
+            batch_dict["input_ids"] = raw_input_ids
+            
+            outputs = self.model(**batch_dict)
+            logits = self.get_model_obj(self.model).mlm_head(outputs.last_hidden_state)
+            mt_labels = raw_input_ids[input_ids == 103]
+            loss = self.criterion(logits[input_ids == 103].squeeze(), mt_labels.long())
+
+            batch_scores = compute_mlm_batch_scores(logits, input_ids, raw_input_ids, 103)
+            metrics = compute_metric(batch_scores, labels)
+            mrr.update(metrics['mrr'], metrics['chunk_size'])
+            hit1.update(metrics['hit1'], metrics['chunk_size'])
+            hit3.update(metrics['hit3'], metrics['chunk_size'])
+            hit10.update(metrics['hit10'], metrics['chunk_size'])
+            losses.update(loss.item(), batch_size)
+
+        metric_dict = {'acc': round(accs.avg, 3),
+                       'mrr': round(mrr.avg, 3),
+                       'hit1': round(hit1.avg, 3),
+                       'hit3': round(hit3.avg, 3),
+                       'hit10': round(hit10.avg, 3),
                        'loss': round(losses.avg, 3)}
         logger.info('Epoch {}, valid metric: {}'.format(self.epoch, json.dumps(metric_dict)))
         return metric_dict
@@ -207,35 +233,30 @@ class Trainer:
             [losses, top1],
             prefix="Epoch: [{}]".format(self.epoch))
 
-        for i, (batch_dict, raw_input_ids) in enumerate(self.train_loader):
+        for i, (batch_dict, b_input_ids, labels) in enumerate(self.train_loader):
             self.model.train()
 
             if torch.cuda.is_available():
                 batch_dict = self.move_to_cuda(batch_dict)
-                raw_input_ids = self.move_to_cuda(raw_input_ids)
+                b_input_ids = self.move_to_cuda(b_input_ids)
+                labels = self.move_to_cuda(labels)
             input_ids = batch_dict["input_ids"]
             batch_size = len(input_ids)
 
             outputs = self.model(**batch_dict)
-            input_ids = batch_dict["input_ids"]
-
-            labels = raw_input_ids[input_ids == self.mask_token_id].view(-1)
-            h = outputs.last_hidden_state[input_ids == self.mask_token_id]
-            logits = self.model.mlm_head(h) 
-            loss = self.criterion(logits.squeeze(), labels.long())
-            # mask mention with [unused1]. see preprocess_data.py line 134
-            mt_labels = raw_input_ids[input_ids == 1]
-            mt_h = outputs.last_hidden_state[input_ids == 1]
-            mt_logits = self.model.mlm_head(mt_h)
-            mt_loss = self.criterion(mt_logits.squeeze(), mt_labels.long())
-            # mention_mlm_loss + mention_context_mlm_loss
-            loss += mt_loss
-            acc = mt_logits.max(dim=1)[1].eq(mt_labels.squeeze()).sum()
-            
-            acc = acc * 100.0 / float(mt_h.size(0))
+            mention_logits = outputs.last_hidden_state[input_ids == self.mask_token_id]
+            b_h = self.get_model_obj(self.model).b_embedding(b_input_ids)
+            inner_product = torch.mul(mention_logits.unsqueeze(dim=1), b_h)
+            inner_product = self.get_model_obj(self.model).classification_head(inner_product)
+            inner_product = torch.softmax(inner_product, dim=2)
+            # print(inner_product.shape)
+            inner_product = torch.mean(inner_product, dim=1)
+            # print(inner_product.shape)
+            loss = self.criterion(inner_product.squeeze(), labels.long())
+            acc = inner_product.max(dim=1)[1].eq(labels.squeeze()).sum()
             # only update mention loss and acc
             top1.update(acc.item(), batch_size)
-            losses.update(mt_loss.item(), batch_size)
+            losses.update(loss.item(), batch_size)
 
             self.optimizer.zero_grad()
             loss.backward()
@@ -246,7 +267,7 @@ class Trainer:
             if i % self.args.log_every_n_steps == 0:
                 progress.display(i)
             if (i + 1) % self.args.eval_every_n_steps == 0:
-                self.eval_loop()
+                self.mlm_eval_loop()
 
     @staticmethod
     def accuracy(output: torch.tensor, target: torch.tensor, topk=(1,)) -> List[torch.tensor]:
@@ -264,6 +285,10 @@ class Trainer:
                 correct_k = correct[:k].contiguous().view(-1).float().sum(0, keepdim=True)
                 res.append(correct_k.mul_(100.0 / batch_size))
             return res
+
+    @staticmethod
+    def get_model_obj(model: nn.Module):
+        return model.module if hasattr(model, "module") else model
 
     @staticmethod
     def save_checkpoint(state: dict, is_best: bool, filename: str):

@@ -117,38 +117,36 @@ def customized_tokenize(tokenizer, token_a, text_pair_b, text_pair_b_max_len, ma
     token_pair_b = tokenizer.tokenize(text=text_pair_b)[:text_pair_b_max_len]
     
     # NSP.
-    tokens = ["CLS"] + token_a + ["SEP"] + token_pair_b + ["SEP"]
-    raw_input_ids = tokenizer.convert_tokens_to_ids(tokens)
-    input_ids = tokenizer.convert_tokens_to_ids(tokens)
+    # tokens = ["CLS"] + token_a + ["SEP"] + token_pair_b + ["SEP"]
+    # raw_input_ids = tokenizer.convert_tokens_to_ids(tokens)
+    # input_ids = tokenizer.convert_tokens_to_ids(tokens)
     
-    # MLM. could choose to mask text_a or text_b or both
-    masked_token_a_ids = tokenizer.convert_tokens_to_ids(token_a)
-    masked_token_b_ids = tokenizer.convert_tokens_to_ids(token_pair_b)
-    # masked_token_a_ids, _ = mask_tokens(tokenizer.vocab_size, tokenizer, masked_token_a_ids, 0.2)
-    masked_token_b_ids, _ = mask_tokens(tokenizer.vocab_size, tokenizer, masked_token_b_ids, 0.2)
-    input_ids = [tokenizer.cls_token_id] + masked_token_a_ids + [tokenizer.sep_token_id] + masked_token_b_ids + [tokenizer.sep_token_id]
+    # MLM inner product.
+    token_a_ids = tokenizer.convert_tokens_to_ids(token_a)
+    token_b_ids = tokenizer.convert_tokens_to_ids(token_pair_b)
+    input_ids = [tokenizer.cls_token_id] + token_a_ids + [tokenizer.mask_token_id] + [tokenizer.sep_token_id]
 
-    token_type_ids = [0]*(len(token_a)+2)+[1]*(len(token_pair_b)+1)
+    token_type_ids = [0]*(len(token_a)+3)
     for idx in range(mention_start+1, mention_end+1):
         token_type_ids[idx] = 2
-        input_ids[idx] = 1
+        # input_ids[idx] = 103
     #  set mention span as 2 ["CLS"]
     attention_mask = [1]*len(input_ids)
 
     input_ids = pad_sequence(input_ids, max_seq_length)
-    raw_input_ids = pad_sequence(raw_input_ids, max_seq_length)
+    token_b_ids = pad_sequence(token_b_ids, max_seq_length)
     token_type_ids = pad_sequence(token_type_ids, max_seq_length)
     attention_mask = pad_sequence(attention_mask, max_seq_length)
 
     if return_tensor == "pt":
         input_ids = torch.LongTensor([input_ids])
-        raw_input_ids = torch.LongTensor([raw_input_ids])
+        b_input_ids = torch.LongTensor([token_b_ids])
         token_type_ids = torch.LongTensor([token_type_ids])
         attention_mask = torch.LongTensor([attention_mask])
     return {"input_ids": input_ids,
-            "raw_input_ids": raw_input_ids,
             "token_type_ids": token_type_ids,
-            "attention_mask": attention_mask
+            "attention_mask": attention_mask,
+            "b_input_ids": b_input_ids
             }
 
 class EntityLinkingSet(Dataset):
@@ -237,6 +235,9 @@ class EntityLinkingSet(Dataset):
 
         mention_context, mention_start, mention_end = get_context_tokens(self.tokenizer,
             context_tokens, start_index, end_index, mention_length)
+
+        label_idx = mention['label']
+        # label_id is now in candidates
         label_document = self.all_documents[label_document_id]['text']
         pos_doc_dict = customized_tokenize(self.tokenizer, mention_context, label_document, cand_length,
                                            self.max_seq_length, mention_start, mention_end)
@@ -249,10 +250,22 @@ class EntityLinkingSet(Dataset):
         while len(cand_document_ids) < self.num_candidates:
             cand_document_ids.extend(cand_document_ids)
         cand_document_ids = cand_document_ids[:self.num_candidates]
-        # print(mention_text)
-        label_ids = self.tokenizer.convert_tokens_to_ids(self.tokenizer.tokenize(mention_text))
-        doc_input_dicts = [pos_doc_dict]
-        doc_ids = [label_document_id]
+
+        label_ids = torch.zeros(len(cand_document_ids))
+        label_ids[label_idx].fill_(1)
+        label_ids = label_ids.long()
+        # if self.is_training:
+        #     doc_input_dicts = [pos_doc_dict]
+        #     doc_ids = [label_document_id]
+        # else:
+        doc_input_dicts = []
+        doc_ids = []
+        for cand_document_id in cand_document_ids:
+            cand_document = self.all_documents[cand_document_id]['text']
+            doc_dict = customized_tokenize(self.tokenizer, mention_context, cand_document, cand_length,
+                                            self.max_seq_length, mention_start, mention_end)
+            doc_input_dicts.append(doc_dict)
+            doc_ids.append(cand_document_id)
         instance = MLMInstance(
             input_dicts=doc_input_dicts,
             label_ids=label_ids,
@@ -265,19 +278,20 @@ class EntityLinkingSet(Dataset):
 
 def collate(batch_data: List[MLMInstance]) -> Tuple[dict, tensor]:
     input_ids = []
-    raw_input_ids = []
+    b_input_ids = []
     attention_mask = []
     token_type_ids = []
-
+    labels = []
     for el_instance in batch_data:
         input_dicts = el_instance.input_dicts
         for doc_dict in input_dicts:
             input_ids.append(doc_dict['input_ids'])
-            raw_input_ids.append(doc_dict['raw_input_ids'])
             attention_mask.append(doc_dict['attention_mask'])
             token_type_ids.append(doc_dict['token_type_ids'])
+            b_input_ids.append(doc_dict['b_input_ids'])
+        labels.append(el_instance.label_ids)
     return {
         "input_ids": torch.cat(input_ids, 0),
         "attention_mask": torch.cat(attention_mask, 0),
         "token_type_ids": torch.cat(token_type_ids, 0),
-    }, torch.cat(raw_input_ids, 0)
+    }, torch.cat(b_input_ids, 0), torch.cat(labels, 0)

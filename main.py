@@ -31,13 +31,13 @@ def get_args():
 
     parser.add_argument("--learning-rate", default=5e-5, type=float,
                         help="learning rate for optimization")
-    parser.add_argument("--weight-decay", default=1e-4, type=float,
+    parser.add_argument("--weight-decay", default=5e-4, type=float,
                         help="weight decay for optimization")
     parser.add_argument("--epochs", default=5, type=int,
                         help="weight decay for optimization")
-    parser.add_argument("--train-batch-size", default=32, type=int,
+    parser.add_argument("--train-batch-size", default=2, type=int,
                         help="train batch size")
-    parser.add_argument("--eval-batch-size", default=128, type=int,
+    parser.add_argument("--eval-batch-size", default=4, type=int,
                         help="train batch size")
 
     parser.add_argument("--max-seq-length", default=256, type=int, help="Maximum sequence length.")
