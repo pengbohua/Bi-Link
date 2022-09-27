@@ -16,16 +16,14 @@ from typing import List, Dict, Tuple
 from utils import logger
 
 
-
 @dataclass
-class NSPInstance(object):
-    """A single set of features for EL as a next sentence prediction task"""
-    input_dicts: List[Dict]
-    label_ids : tensor
-    mention_id : str
-    doc_ids : List[str]
-    corpus : str
-
+class CLInstance(object):
+    """A single set of features for EL as a contrastive learning task"""
+    mention_dict: Dict
+    entity_dict: Dict
+    candidate_dicts: List[Dict]
+    label: tensor
+    corpus: str
 
 def load_candidates(input_dir):
     documents = {}
@@ -94,13 +92,17 @@ def pad_sequence(tokens, max_len):
     assert len(tokens) <= max_len
     return tokens + [0]*(max_len - len(tokens))
 
-def customized_tokenize(tokenizer, token_a, text_pair_b, text_pair_b_max_len, max_seq_length, mention_start=None,
+def customized_tokenize(tokenizer, tokens, max_seq_length, mention_start=None,
                         mention_end=None, return_tensor="pt"):
-    token_pair_b = tokenizer.tokenize(text=text_pair_b)[:text_pair_b_max_len]
-    tokens = ["[CLS]"] + token_a + ["[SEP]"] + token_pair_b + ["[SEP]"]
+    if type(tokens) ==str:
+        tokens = tokenizer.tokenize(tokens, add_special_tokens=True, max_length=max_seq_length, truncation=True)
+    else:
+        tokens = ["[CLS]"] + tokens + ["[SEP]"]
 
     input_ids = tokenizer.convert_tokens_to_ids(tokens)
-    token_type_ids = [0]*(len(token_a)+2)+[1]*(len(token_pair_b)+1)
+
+    # token type ids
+    token_type_ids = [0]*len(tokens)
     if mention_start and mention_end:
         for idx in range(mention_start+1, mention_end+1):
             token_type_ids[idx] = 2
@@ -173,16 +175,13 @@ class EntityLinkingSet(Dataset):
         return len(self.mentions)
 
     def __getitem__(self, item):
-        return self.create_nsp_instances(self.mentions[item])
+        return self.create_cl_instances(self.mentions[item])
 
-    def create_nsp_instances(self, mention):
+    def create_cl_instances(self, mention):
         """Creates Next Sentence Prediction Instance for a single document."""
 
-        # Account for [CLS], [SEP], [SEP]
-        max_num_tokens = self.max_seq_length - 3
-
-        mention_length = int(max_num_tokens / 2)
-        cand_length = max_num_tokens - mention_length
+        # Account for [CLS], [SEP]
+        max_num_tokens = self.max_seq_length - 2
 
         # mention and context
         mention_id = mention['mention_id']
@@ -200,56 +199,73 @@ class EntityLinkingSet(Dataset):
         assert extracted_mention == mention_text
 
         mention_context, mention_start, mention_end = get_context_tokens(self.tokenizer,
-            context_tokens, start_index, end_index, mention_length)
+            context_tokens, start_index, end_index, max_num_tokens)
 
-        label_idx = mention['label']
-        # label_id is now in candidates
-        # label_document = self.all_documents[label_document_id]['text']
+        label_idx = mention['label']        # indices of gts in candidate sets
+        input_dicts = customized_tokenize(self.tokenizer, mention_context, self.max_seq_length, mention_start, mention_end)
 
-        # adding tf-idf candidates as negative samples with label_id
+        label_document = self.all_documents[label_document_id]['text']
+        label_dicts = customized_tokenize(self.tokenizer, label_document, self.max_seq_length)
+
+        # adding tf-idf candidates as negative samples
         cand_document_ids = self.candidates[mention_id]
-        cand_document_ids = cand_document_ids[:self.num_candidates]
+        if self.is_training:
+            # del gt from negative samples
+            # cand_document_ids = [cand for cand in cand_document_ids if cand != label_document_id]
+            del cand_document_ids[label_idx]
 
-        # label for nsp prediction
-        label_ids = torch.zeros(len(cand_document_ids))
-        label_ids[label_idx].fill_(1)
-        label_ids = label_ids.long()
+            cand_document_ids = cand_document_ids[:self.num_candidates-1]
 
-        doc_input_dicts = []
-        doc_ids = []
+        candidates_input_dicts = []
         for cand_document_id in cand_document_ids:
             cand_document = self.all_documents[cand_document_id]['text']
-            doc_dict = customized_tokenize(self.tokenizer, mention_context, cand_document, cand_length,
-                                               self.max_seq_length,)
-            doc_input_dicts.append(doc_dict)
-            doc_ids.append(cand_document_id)
+            cand_dict = customized_tokenize(self.tokenizer, cand_document, self.max_seq_length,)
+            candidates_input_dicts.append(cand_dict)
 
-        instance = NSPInstance(
-            input_dicts=doc_input_dicts,
-            label_ids=label_ids,
-            mention_id=mention_id,
-            doc_ids=doc_ids,
+        instance = CLInstance(
+            mention_dict=input_dicts,
+            entity_dict=label_dicts,
+            candidate_dicts=candidates_input_dicts,
+            label=torch.LongTensor([label_idx]),
             corpus=mention['corpus']
         )
         return instance
 
-
-def collate(batch_data: List[NSPInstance]) -> Tuple[dict, tensor]:
+def collate(batch_data):
     input_ids = []
     attention_mask = []
     token_type_ids = []
-    labels = []
 
-    for el_instance in batch_data:
-        input_dicts = el_instance.input_dicts
-        for doc_dict in input_dicts:
-            input_ids.append(doc_dict['input_ids'])
-            attention_mask.append(doc_dict['attention_mask'])
-            token_type_ids.append(doc_dict['token_type_ids'])
-        labels.append(el_instance.label_ids)
+    for sep_dict in batch_data:
+        input_ids.append(sep_dict['input_ids'])
+        attention_mask.append(sep_dict['attention_mask'])
+        token_type_ids.append(sep_dict['token_type_ids'])
+
+    return {"input_ids": torch.cat(input_ids, 0),
+            "attention_mask": torch.cat(attention_mask, 0),
+            "token_type_ids": torch.cat(token_type_ids, 0),
+            }
+
+
+def compose_collate(batch_cl_data: List[CLInstance]):
+    mention_dicts = [cl_data.mention_dict for cl_data in batch_cl_data]
+    mention_dicts = collate(mention_dicts)
+
+    label_dicts = [cl_data.entity_dict for cl_data in batch_cl_data]
+    label_dicts = collate(label_dicts)
+
+    labels = [cl_data.label for cl_data in batch_cl_data]
+    labels = torch.cat(labels, 0)
+
+    candidate_dict_list = []
+    for cl_data in batch_cl_data:
+        cand_dict_list = cl_data.candidate_dicts        # 63, hidden_dim
+        _cand_dict = collate(cand_dict_list)
+        candidate_dict_list.append(_cand_dict)
 
     return {
-        "input_ids": torch.cat(input_ids, 0),
-        "attention_mask": torch.cat(attention_mask, 0),
-        "token_type_ids": torch.cat(token_type_ids, 0),
-    }, torch.cat(labels, 0)
+        "mention_dicts": mention_dicts,
+        "entity_dicts": label_dicts,
+        "labels": labels,
+        "candidate_dicts": candidate_dict_list
+    }

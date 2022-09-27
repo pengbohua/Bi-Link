@@ -151,18 +151,17 @@ class Trainer:
                 with open(os.path.join(self.eval_model_path, "best_metric"), 'w', encoding='utf-8') as f:
                     f.write(json.dumps(metric_dict, indent=4))
 
-                self.save_checkpoint({'state_dict': self.model.state_dict()},
+                self.save_checkpoint(self.model.state_dict(),
                                      is_best=True, filename=os.path.join(self.eval_model_path, "best_model.ckpt"))
 
             else:
                 filename = '{}/checkpoint_{}_{}.ckpt'.format(self.eval_model_path, self.epoch, step)
-                self.save_checkpoint({'state_dict': self.model.state_dict()}, is_best=False, filename=filename)
+                self.save_checkpoint(self.model.state_dict(), is_best=False, filename=filename)
 
             self.delete_old_ckt(path_pattern='{}/checkpoint_*.ckpt'.format(self.eval_model_path),
                        keep=self.args.max_weights_to_keep)
 
         logger.info(metric_dict)
-
 
     @torch.no_grad()
     def eval_loop(self) -> Dict:
@@ -173,7 +172,6 @@ class Trainer:
         hit3 = AverageMeter('hit3', ':6.2f')
         hit10 = AverageMeter('hit10', ':6.2f')
         mrr = AverageMeter('MRR', ':6.2f')
-
 
         for i, (batch_dict, labels) in enumerate(self.valid_loader):
             self.model.eval()
@@ -249,7 +247,7 @@ class Trainer:
             else:
                 loss.backward()
                 torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.args.grad_clip)
-            self.optimizer.step()
+                self.optimizer.step()
             self.scheduler.step()
 
             if i % self.args.log_every_n_steps == 0:

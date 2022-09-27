@@ -3,8 +3,8 @@ import json
 import torch.backends.cudnn as cudnn
 
 import argparse
-from nsp_trainer import Trainer, TrainingArguments
-from preprocess_data import EntityLinkingSet, load_documents
+from trainer import Trainer, TrainingArguments
+from cl_preprocess_data import EntityLinkingSet, load_documents
 from utils import logger
 # import wandb
 
@@ -40,7 +40,7 @@ def get_args():
     parser.add_argument("--eval-batch-size", default=128, type=int,
                         help="train batch size")
 
-    parser.add_argument("--max-seq-length", default=128, type=int, help="Maximum sequence length.")
+    parser.add_argument("--max-seq-length", default=50, type=int, help="Maximum sequence length.")
 
     parser.add_argument("--num-candidates", default=64, type=int, help="Number of entity candidates.")
 
@@ -80,7 +80,7 @@ def main():
                                      mentions_path=args.train_mentions_file,
                                      tfidf_candidates_file=args.train_tfidf_candidates_file,
                                      num_candidates=args.num_candidates,
-                                     max_seq_length=256,
+                                     max_seq_length=args.max_seq_length,
                                      is_training=True)
 
     eval_dataset = EntityLinkingSet(
@@ -90,7 +90,7 @@ def main():
                                     mentions_path=args.eval_mentions_file,
                                    tfidf_candidates_file=args.eval_tfidf_candidates_file,
                                     num_candidates=args.num_candidates,
-                                    max_seq_length=256,
+                                    max_seq_length=args.max_seq_length,
                                    is_training=False)
 
     trainer = Trainer(

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-export CUDA_VISIBLE_DEVICES=1,3,4,5,6,7
+export CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7
 
 
 if [ -z $DOCDIR]; then
@@ -29,9 +29,9 @@ concat() {
 documents="$(concat ${domains[@]})"
 
 python3 main.py --document-file $documents \
-                --train-mentions-file data/trunc_mentions/train.json \
+                --train-mentions-file data/mentions/train.json \
                 --eval-mentions-file $MENTIONDIR/valid.json \
-                --train-tfidf-candidates-file data/trunc_tfidfs/train_tfidfs.json \
+                --train-tfidf-candidates-file data/tfidf_candidates/train_tfidfs.json \
                 --eval-tfidf-candidates-file  $TFIDFDIR/valid_tfidfs.json \
                 --train-batch-size 64 \
                 --eval-batch-size 64 \
