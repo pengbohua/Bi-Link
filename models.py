@@ -26,7 +26,7 @@ class EntityLinker(nn.Module):
 
         self.pooling = 'mean'
         self.additive_margin = 0.0
-        self.inv_t = torch.tensor(0.05, requires_grad=False)
+        self.inv_t = torch.tensor(20.0, requires_grad=False)
 
     def encode(self, encoder, input_ids, attention_mask, token_type_ids):
         outputs = encoder(input_ids=input_ids,

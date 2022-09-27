@@ -227,6 +227,7 @@ class Trainer:
             labels = torch.arange(len(logits)).to(logits.device)
 
             predictions = logits.argmax(1)
+            print("predictions", predictions)
             _acc = torch.sum(torch.eq(predictions, labels)) / len(labels)
 
             loss = self.criterion(logits, labels)
