@@ -40,15 +40,15 @@ def get_args():
     parser.add_argument("--eval-batch-size", default=128, type=int,
                         help="train batch size")
 
-    parser.add_argument("--max-seq-length", default=50, type=int, help="Maximum sequence length.")
+    parser.add_argument("--max-seq-length", default=128, type=int, help="Maximum sequence length.")
 
-    parser.add_argument("--num-candidates", default=64, type=int, help="Number of tfidf candidates (0-63).")
+    parser.add_argument("--num-candidates", default=1, type=int, help="Number of tfidf candidates (0-63).")
 
     parser.add_argument("--random-seed", default=12345, type=int, help="Random seed for data generation.")
 
     parser.add_argument("--use-tf-idf-negatives", default=True, type=bool, help="Use tf-idf as hard negatives in contrastive learning.")
 
-    parser.add_argument("--use-mention-negatives", default=True, type=bool, help="Use in-batch mention negatives as hard negatives in contrastive learning.")
+    parser.add_argument("--use-mention-negatives", default=False, type=bool, help="Use in-batch mention negatives as hard negatives in contrastive learning.")
 
     args = parser.parse_args()
     return args
@@ -70,6 +70,7 @@ def main():
     train_args.train_batch_size = args.train_batch_size
     train_args.eval_batch_size = args.eval_batch_size
     train_args.num_cand = args.num_candidates
+    train_args.epochs = args.epochs
 
     all_documents = {}      # doc_id/ entity_id to entity
     document_path = args.document_files[0].split(",")

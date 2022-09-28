@@ -40,13 +40,13 @@ class TrainingArguments:
                         metadata={"help": "warmup steps"})
     use_amp: bool = field(default=True,
                         metadata={"help": "use mixed precision"})
-    train_batch_size: int = field(default=2,
+    train_batch_size: int = field(default=16,
                         metadata={"help": "train batch size"})
-    eval_batch_size: int = field(default=2,
+    eval_batch_size: int = field(default=16,
                         metadata={"help": "eval batch size"})
     eval_every_n_steps: int = field(default=1000,
                         metadata={"help": "eval every n steps"})
-    log_every_n_steps: int = field(default=100,
+    log_every_n_steps: int = field(default=20,
                         metadata={"help": "log every n steps"})
     max_weights_to_keep: int = field(default=3,
                                      metadata={"help": "max number of weight file to keep"})
@@ -118,7 +118,6 @@ class Trainer:
         if self.args.use_amp:
             self.scaler = torch.cuda.amp.GradScaler()
 
-        self.evaluate()
         for epoch in range(self.args.epochs):
             self.train_one_epoch()
             self.evaluate()

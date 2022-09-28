@@ -104,6 +104,7 @@ class EntityLinker(nn.Module):
         if mm_mask is not None:
             mm_logits = mention_vectors.mm(mention_vectors.t())
             mm_logits.masked_fill_(mm_mask, 1e-4)
+            mm_logits.fill_diagonal_(-100)
             logits = torch.cat([logits, mm_logits], 1)
 
         if negative_logits is not None:
