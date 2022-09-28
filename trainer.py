@@ -89,6 +89,8 @@ class Trainer:
         # initial status
         self.is_training = True
         self.best_metric = None
+        self.use_tfidf_negatives = False
+        self.use_in_batch_mention_negatives =True
         self.epoch = 0
         # dataloader
         self.train_loader = torch.utils.data.DataLoader(
@@ -218,16 +220,24 @@ class Trainer:
             mention_dicts = batch_cl_data["mention_dicts"]
             entity_dicts = batch_cl_data["entity_dicts"]
             candidate_dicts = batch_cl_data["candidate_dicts"]
+            mm_mask = batch_cl_data["mm_mask"]
+            me_mask = batch_cl_data["me_mask"]
             batch_size = len(mention_dicts)
 
             # compute output
+            if not self.use_tfidf_negatives:
+                output_dicts = self.model(mention_dicts=mention_dicts, entity_dicts=entity_dicts)
+                del candidate_dicts
+            else:
+                output_dicts = self.model(mention_dicts=mention_dicts, entity_dicts=entity_dicts, candidate_dict_list=candidate_dicts)
 
-            output_dicts = self.model(mention_dicts=mention_dicts, entity_dicts=entity_dicts, candidate_dict_list=candidate_dicts)
-            logits = self.get_model_obj(self.model).compute_logits(**output_dicts)
+            if not self.use_in_batch_mention_negatives:
+                mm_mask = None
+
+            logits = self.get_model_obj(self.model).compute_logits(me_mask, mm_mask, **output_dicts)
             labels = torch.arange(len(logits)).to(logits.device)
 
             predictions = logits.argmax(1)
-            print("predictions", predictions)
             _acc = torch.sum(torch.eq(predictions, labels)) / len(labels)
 
             loss = self.criterion(logits, labels)

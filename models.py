@@ -70,17 +70,18 @@ class EntityLinker(nn.Module):
         mention_vectors = self.encode(self.mention_encoder, **mention_dicts)
         entity_vectors = self.encode(self.entity_encoder, **entity_dicts)
 
-        assert len(candidate_dict_list["input_ids"])==bs
         candidate_vectors = []
-        for i in range(len(mention_vectors)):
-            cur_candidate_dict = {"input_ids": candidate_dict_list["input_ids"][i],
+        if candidate_dict_list is not None:
+            assert len(candidate_dict_list["input_ids"])==bs
+            for i in range(len(mention_vectors)):
+                cur_candidate_dict = {"input_ids": candidate_dict_list["input_ids"][i],
                                 "attention_mask": candidate_dict_list["attention_mask"][i],
                                 "token_type_ids": candidate_dict_list["token_type_ids"][i],
-            }
-            cand_vec = self.encode(self.entity_encoder, **cur_candidate_dict)  # N negative sample for a single mention
-            candidate_vectors.append(cand_vec)
+                }
+                cand_vec = self.encode(self.entity_encoder, **cur_candidate_dict)  # N negative sample for a single mention
+                candidate_vectors.append(cand_vec)
 
-        if candidate_vectors is not None:
+        if len(candidate_vectors) != 0:
             candidate_vectors = torch.stack(candidate_vectors, 0)       # bs, num_cand, hidden_dim
             negative_logits = torch.matmul(mention_vectors.view(bs, 1, self.hidden_size), candidate_vectors.permute(0, 2, 1)).squeeze(1)
         else:
@@ -92,12 +93,19 @@ class EntityLinker(nn.Module):
                 "negative_logits": negative_logits,
                 }
 
-    def compute_logits(self, mention_vectors, entity_vectors, negative_logits):
+    def compute_logits(self, me_mask, mm_mask, mention_vectors, entity_vectors, negative_logits):
         cosine = mention_vectors.mm(entity_vectors.t())
         if self.training:
             logits = cosine - torch.zeros_like(cosine, device=cosine.device).fill_diagonal_(self.additive_margin)
         else:
             logits = cosine
+
+        logits.masked_fill_(me_mask, 1e-4)
+
+        if mm_mask is not None:
+            mm_logits = mention_vectors.mm(mention_vectors.t())
+            mm_logits.masked_fill_(mm_mask, 1e-4)
+            logits = torch.cat([logits, mm_logits], 1)
 
         if negative_logits is not None:
             assert len(logits) == len(negative_logits)

@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 from torch.utils.data import Dataset, DataLoader
 from typing import List, Dict, Tuple
 from utils import logger
-
+from mention_mask import get_mention_mask, get_label_mask
 
 @dataclass
 class CLInstance(object):
@@ -22,7 +22,8 @@ class CLInstance(object):
     mention_dict: Dict
     entity_dict: Dict
     candidate_dicts: List[Dict]
-    label: tensor
+    mention_id: str
+    label_id: str
     corpus: str
 
 def load_candidates(input_dir):
@@ -226,7 +227,8 @@ class EntityLinkingSet(Dataset):
             mention_dict=input_dicts,
             entity_dict=label_dicts,
             candidate_dicts=candidates_input_dicts,
-            label=torch.LongTensor([label_idx]),
+            mention_id=mention_id,
+            label_id=label_document_id,
             corpus=mention['corpus']
         )
         return instance
@@ -254,8 +256,8 @@ def compose_collate(batch_cl_data: List[CLInstance]):
     label_dicts = [cl_data.entity_dict for cl_data in batch_cl_data]
     label_dicts = collate(label_dicts)
 
-    labels = [cl_data.label for cl_data in batch_cl_data]
-    labels = torch.cat(labels, 0)
+    mention_ids = [cl_data.mention_id for cl_data in batch_cl_data]
+    label_ids = [cl_data.label_id for cl_data in batch_cl_data]
 
     input_ids = []
     attention_mask = []
@@ -271,7 +273,8 @@ def compose_collate(batch_cl_data: List[CLInstance]):
     return {
         "mention_dicts": mention_dicts,
         "entity_dicts": label_dicts,
-        "labels": labels,
+        "me_mask": get_label_mask(mention_ids, label_ids),
+        "mm_mask": get_mention_mask(mention_ids),
         "candidate_dicts": {"input_ids": torch.stack(input_ids, 0),
                             "attention_mask": torch.stack(attention_mask, 0),
                             "token_type_ids": torch.stack(token_type_ids, 0)
