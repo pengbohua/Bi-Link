@@ -72,7 +72,6 @@ class EntityLinker(nn.Module):
 
         candidate_vectors = []
         if candidate_dict_list is not None:
-            assert len(candidate_dict_list["input_ids"])==bs
             for i in range(len(mention_vectors)):
                 cur_candidate_dict = {"input_ids": candidate_dict_list["input_ids"][i],
                                 "attention_mask": candidate_dict_list["attention_mask"][i],
@@ -118,8 +117,16 @@ class EntityLinker(nn.Module):
         mention_vectors = self.encode(self.mention_encoder, **mention_dicts)
 
         candidate_vectors = []
-        for candidate_dicts in candidate_dicts_list:
-            cand_vec = self.encode(self.entity_encoder, **candidate_dicts)  # N negative sample for a single mention
+
+        assert len(candidate_dicts_list["input_ids"]) == len(mention_vectors)
+
+        for i in range(len(mention_vectors)):
+            cur_candidate_dict = {"input_ids": candidate_dicts_list["input_ids"][i],
+                                  "attention_mask": candidate_dicts_list["attention_mask"][i],
+                                  "token_type_ids": candidate_dicts_list["token_type_ids"][i],
+                                  }
+
+            cand_vec = self.encode(self.entity_encoder, **cur_candidate_dict)  # N negative sample for a single mention
             candidate_vectors.append(cand_vec)
 
         candidate_vectors = torch.stack(candidate_vectors, 0).permute(0, 2, 1)

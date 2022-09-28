@@ -42,9 +42,13 @@ def get_args():
 
     parser.add_argument("--max-seq-length", default=50, type=int, help="Maximum sequence length.")
 
-    parser.add_argument("--num-candidates", default=64, type=int, help="Number of entity candidates.")
+    parser.add_argument("--num-candidates", default=64, type=int, help="Number of tfidf candidates (0-63).")
 
     parser.add_argument("--random-seed", default=12345, type=int, help="Random seed for data generation.")
+
+    parser.add_argument("--use-tf-idf-negatives", default=True, type=bool, help="Use tf-idf as hard negatives in contrastive learning.")
+
+    parser.add_argument("--use-mention-negatives", default=True, type=bool, help="Use in-batch mention negatives as hard negatives in contrastive learning.")
 
     args = parser.parse_args()
     return args
@@ -98,7 +102,10 @@ def main():
         eval_model_path=args.eval_model_path,
         train_dataset=train_dataset,
         eval_dataset=eval_dataset,
-        train_args=train_args)
+        train_args=train_args,
+        use_tf_idf_negatives=args.use_tf_idf_negatives,
+        use_in_batch_mention_negatives=args.use_mention_negatives
+    )
 
     logger.info('Args={}'.format(json.dumps(args.__dict__, ensure_ascii=False, indent=4)))
     trainer.run()

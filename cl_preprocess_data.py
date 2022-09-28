@@ -24,6 +24,7 @@ class CLInstance(object):
     candidate_dicts: List[Dict]
     mention_id: str
     label_id: str
+    label: tensor
     corpus: str
 
 def load_candidates(input_dir):
@@ -208,14 +209,14 @@ class EntityLinkingSet(Dataset):
         label_document = self.all_documents[label_document_id]['text']
         label_dicts = customized_tokenize(self.tokenizer, label_document, self.max_seq_length)
 
-        # adding tf-idf candidates as negative samples
+        # adding tf-idf candidates (including gt by default)
         cand_document_ids = self.candidates[mention_id]
         if self.is_training:
             # del gt from negative samples
             # cand_document_ids = [cand for cand in cand_document_ids if cand != label_document_id]
             del cand_document_ids[label_idx]
 
-            cand_document_ids = cand_document_ids[:self.num_candidates-1]
+            cand_document_ids = cand_document_ids[:self.num_candidates]     # truncate to num_candidates for cl
 
         candidates_input_dicts = []
         for cand_document_id in cand_document_ids:
@@ -229,6 +230,7 @@ class EntityLinkingSet(Dataset):
             candidate_dicts=candidates_input_dicts,
             mention_id=mention_id,
             label_id=label_document_id,
+            label=torch.LongTensor([label_idx]),
             corpus=mention['corpus']
         )
         return instance
@@ -256,6 +258,9 @@ def compose_collate(batch_cl_data: List[CLInstance]):
     label_dicts = [cl_data.entity_dict for cl_data in batch_cl_data]
     label_dicts = collate(label_dicts)
 
+    labels = [cl_data.label for cl_data in batch_cl_data]
+    labels = torch.cat(labels, 0)
+
     mention_ids = [cl_data.mention_id for cl_data in batch_cl_data]
     label_ids = [cl_data.label_id for cl_data in batch_cl_data]
 
@@ -273,6 +278,7 @@ def compose_collate(batch_cl_data: List[CLInstance]):
     return {
         "mention_dicts": mention_dicts,
         "entity_dicts": label_dicts,
+        "labels": labels,
         "me_mask": get_label_mask(mention_ids, label_ids),
         "mm_mask": get_mention_mask(mention_ids),
         "candidate_dicts": {"input_ids": torch.stack(input_ids, 0),

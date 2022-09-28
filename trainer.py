@@ -61,7 +61,9 @@ class Trainer:
                  train_dataset,
                  eval_dataset,
                  num_workers=4,
-                 train_args: TrainingArguments = None
+                 train_args: TrainingArguments = None,
+                 use_tf_idf_negatives=True,
+                 use_in_batch_mention_negatives=True
                  ):
         # training arguments
         self.args = train_args
@@ -69,6 +71,9 @@ class Trainer:
         self.pretrained_model_path = pretrained_model_path
         self.eval_model_path = eval_model_path + "/" + curr_time
         os.makedirs(self.eval_model_path, exist_ok=True)
+
+        self.use_tfidf_negatives = True if self.num_candidates and use_tf_idf_negatives else False
+        self.use_in_batch_mention_negatives = use_in_batch_mention_negatives
         # create model
         logger.info("Creating model")
         self.config = AutoConfig.from_pretrained(pretrained_model_path)
@@ -89,16 +94,15 @@ class Trainer:
         # initial status
         self.is_training = True
         self.best_metric = None
-        self.use_tfidf_negatives = False
-        self.use_in_batch_mention_negatives =True
         self.epoch = 0
+
         # dataloader
         self.train_loader = torch.utils.data.DataLoader(
             train_dataset,
             batch_size=self.args.train_batch_size,
             shuffle=True,
             collate_fn=compose_collate,
-            num_workers=1,
+            num_workers=num_workers,
             pin_memory=True,
             drop_last=True)
 
@@ -107,13 +111,14 @@ class Trainer:
             batch_size=self.args.eval_batch_size,
             shuffle=False,
             collate_fn=compose_collate,
-            num_workers=1,
+            num_workers=num_workers,
             pin_memory=True)
 
     def run(self):
         if self.args.use_amp:
             self.scaler = torch.cuda.amp.GradScaler()
 
+        self.evaluate()
         for epoch in range(self.args.epochs):
             self.train_one_epoch()
             self.evaluate()
@@ -174,12 +179,11 @@ class Trainer:
             if torch.cuda.is_available():
                 batch_cl_data = self.move_to_cuda(batch_cl_data)
 
-            mention_dicts = batch_cl_data["mention_dicts"]
+            mention_dicts = batch_cl_data["mention_dicts"]  # 1024 x 768
+            labels = batch_cl_data["labels"]    # 1024 x 1
             candidate_dicts = batch_cl_data["candidate_dicts"]
-            labels = batch_cl_data["labels"]
 
             batch_size = len(labels)
-
             logits, metrics = self.get_model_obj(self.model).predict(mention_dicts, candidate_dicts, labels)
             loss = self.criterion(logits, labels)
             losses.update(loss.item(), batch_size)
@@ -187,7 +191,7 @@ class Trainer:
             predictions = logits.argmax(1)
             _acc = torch.sum(torch.eq(predictions, labels)) / len(labels)
 
-            accs.update(_acc, batch_size)
+            accs.update(_acc.item(), batch_size)
             mrr.update(metrics['mrr'], batch_size)
             hit1.update(metrics['hit1'], batch_size)
             hit3.update(metrics['hit3'], batch_size)
@@ -235,6 +239,7 @@ class Trainer:
                 mm_mask = None
 
             logits = self.get_model_obj(self.model).compute_logits(me_mask, mm_mask, **output_dicts)
+
             labels = torch.arange(len(logits)).to(logits.device)
 
             predictions = logits.argmax(1)
