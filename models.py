@@ -12,8 +12,7 @@ class EntityLinker(nn.Module):
         super(EntityLinker, self).__init__()
         self.config = AutoConfig.from_pretrained(pretrained_model_path)
         self.hidden_size = self.config.hidden_size
-        self.entity_encoder = BertModel(config=self.config, add_pooling_layer=False)
-        self.mention_encoder = copy.deepcopy(self.entity_encoder)
+        self.mention_encoder = BertModel(config=self.config, add_pooling_layer=False)
         self.load_pretrained_model(pretrained_model_path)
 
         # adding mention span as a new type to token type ids
@@ -23,6 +22,8 @@ class EntityLinker(nn.Module):
         self.mention_encoder._init_weights(new_token_type_embeddings)
         new_token_type_embeddings.weight.data[:old_type_vocab_size, :] = self.mention_encoder.embeddings.token_type_embeddings.weight.data[:old_type_vocab_size, :]
         self.mention_encoder.embeddings.token_type_embeddings = new_token_type_embeddings
+
+        self.entity_encoder = copy.deepcopy(self.mention_encoder)
 
         self.pooling = 'mean'
         self.additive_margin = 0.0
@@ -69,6 +70,7 @@ class EntityLinker(nn.Module):
         # contrastive learning
         mention_vectors = self.encode(self.mention_encoder, **mention_dicts)
         entity_vectors = self.encode(self.entity_encoder, **entity_dicts)
+        neg_mention_vectors = self.encode(self.entity_encoder, **mention_dicts)
 
         candidate_vectors = []
         if candidate_dict_list is not None:
@@ -88,23 +90,24 @@ class EntityLinker(nn.Module):
 
         return {
                 "mention_vectors": mention_vectors,
+                "neg_mention_vectors": neg_mention_vectors,
                 "entity_vectors": entity_vectors,
                 "negative_logits": negative_logits,
                 }
 
-    def compute_logits(self, me_mask, mm_mask, mention_vectors, entity_vectors, negative_logits):
+    def compute_logits(self, me_mask, mm_mask, mention_vectors, negative_mention_vectors, entity_vectors, negative_logits):
         cosine = mention_vectors.mm(entity_vectors.t())
         if self.training:
             logits = cosine - torch.zeros_like(cosine, device=cosine.device).fill_diagonal_(self.additive_margin)
         else:
             logits = cosine
 
-        logits.masked_fill_(me_mask, 1e-4)
+        logits.masked_fill_(me_mask, -1e4)
 
         if mm_mask is not None:
-            mm_logits = mention_vectors.mm(mention_vectors.t())
-            mm_logits.masked_fill_(mm_mask, 1e-4)
-            mm_logits.fill_diagonal_(-100)
+            mm_logits = mention_vectors.mm(negative_mention_vectors.t())
+            mm_logits.masked_fill_(mm_mask, -1e4)
+            # mm_logits.fill_diagonal_(-1e4)
             logits = torch.cat([logits, mm_logits], 1)
 
         if negative_logits is not None:
@@ -147,7 +150,7 @@ class EntityLinker(nn.Module):
             if k.startswith('module.'):
                 k = k[len('module.'):]
             new_state_dict[k] = v
-        self.entity_encoder.load_state_dict(new_state_dict, strict=False)
+        self.mention_encoder.load_state_dict(new_state_dict, strict=False)
 
     @staticmethod
     def compute_metric(batch_scores: torch.tensor, labels: torch.tensor):

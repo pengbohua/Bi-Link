@@ -12,6 +12,7 @@ from transformers import AdamW, get_linear_schedule_with_warmup
 from cl_preprocess_data import compose_collate
 from utils import AverageMeter, ProgressMeter, logger
 from transformers import BertModel, AutoConfig
+from transformers.models.bert import BertForMaskedLM
 from dataclasses import dataclass, field
 from metrics import accuracy, compute_metric
 from models import EntityLinker
@@ -50,8 +51,6 @@ class TrainingArguments:
                         metadata={"help": "log every n steps"})
     max_weights_to_keep: int = field(default=3,
                                      metadata={"help": "max number of weight file to keep"})
-    cut_off_negative_gradients: bool = field(default=bool,
-                                             metadata={"help": "cut off gradient flow to negative samples"})
 
 class Trainer:
 
@@ -63,7 +62,7 @@ class Trainer:
                  num_workers=4,
                  train_args: TrainingArguments = None,
                  use_tf_idf_negatives=True,
-                 use_in_batch_mention_negatives=True
+                 use_in_batch_mention_negatives=False
                  ):
         # training arguments
         self.args = train_args
@@ -72,7 +71,7 @@ class Trainer:
         self.eval_model_path = eval_model_path + "/" + curr_time
         os.makedirs(self.eval_model_path, exist_ok=True)
 
-        self.use_tfidf_negatives = True if self.num_candidates and use_tf_idf_negatives else False
+        self.use_tfidf_negatives = True if (self.num_candidates != 0 and use_tf_idf_negatives) else False
         self.use_in_batch_mention_negatives = use_in_batch_mention_negatives
         # create model
         logger.info("Creating model")
