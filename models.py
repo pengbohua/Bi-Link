@@ -90,7 +90,7 @@ class EntityLinker(nn.Module):
 
         return {
                 "mention_vectors": mention_vectors,
-                "neg_mention_vectors": neg_mention_vectors,
+                "negative_mention_vectors": neg_mention_vectors,
                 "entity_vectors": entity_vectors,
                 "negative_logits": negative_logits,
                 }
