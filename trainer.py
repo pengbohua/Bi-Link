@@ -12,10 +12,11 @@ from transformers import AdamW, get_linear_schedule_with_warmup
 from cl_preprocess_data import compose_collate
 from utils import AverageMeter, ProgressMeter, logger
 from transformers import BertModel, AutoConfig
+from transformers.models.bert import BertForMaskedLM
 from dataclasses import dataclass, field
 from metrics import accuracy, compute_metric
 from models import EntityLinker
-
+from apex import amp
 
 curr_time = time.strftime("%Y-%m-%d-%H-%M-%S", time.localtime(time.time()))
 
@@ -44,14 +45,12 @@ class TrainingArguments:
                         metadata={"help": "train batch size"})
     eval_batch_size: int = field(default=16,
                         metadata={"help": "eval batch size"})
-    eval_every_n_steps: int = field(default=1000,
+    eval_every_n_intervals: int = field(default=2,
                         metadata={"help": "eval every n steps"})
-    log_every_n_steps: int = field(default=20,
+    log_every_n_intervals: int = field(default=100,
                         metadata={"help": "log every n steps"})
     max_weights_to_keep: int = field(default=3,
                                      metadata={"help": "max number of weight file to keep"})
-    cut_off_negative_gradients: bool = field(default=bool,
-                                             metadata={"help": "cut off gradient flow to negative samples"})
 
 class Trainer:
 
@@ -63,7 +62,9 @@ class Trainer:
                  num_workers=4,
                  train_args: TrainingArguments = None,
                  use_tf_idf_negatives=True,
-                 use_in_batch_mention_negatives=True
+                 use_in_batch_mention_negatives=False,
+                 use_rdrop=True,
+                 margin=0.00
                  ):
         # training arguments
         self.args = train_args
@@ -72,18 +73,22 @@ class Trainer:
         self.eval_model_path = eval_model_path + "/" + curr_time
         os.makedirs(self.eval_model_path, exist_ok=True)
 
-        self.use_tfidf_negatives = True if self.num_candidates and use_tf_idf_negatives else False
+        self.use_tfidf_negatives = True if (self.num_candidates != 0 and use_tf_idf_negatives) else False
         self.use_in_batch_mention_negatives = use_in_batch_mention_negatives
+        self.use_rdrop = use_rdrop
         # create model
         logger.info("Creating model")
         self.config = AutoConfig.from_pretrained(pretrained_model_path)
         self.model = EntityLinker(pretrained_model_path)
-        self._setup_training()
-
-        self.criterion = nn.CrossEntropyLoss().cuda()
+        self.model.additive_margin = margin
         self.optimizer = AdamW([p for p in self.model.parameters() if p.requires_grad],
                                lr=self.args.learning_rate,
                                weight_decay=self.args.weight_decay)
+        if self.args.use_amp:
+            self.model, self.optimizer = amp.initialize(self.model.cuda(), self.optimizer, opt_level="O1")
+        self._setup_training()
+
+        self.criterion = nn.CrossEntropyLoss().cuda()
 
         num_training_steps = self.args.epochs * len(train_dataset) // max(self.args.train_batch_size, 1)
         self.args.warmup = min(self.args.warmup, num_training_steps // 10)
@@ -115,8 +120,7 @@ class Trainer:
             pin_memory=True)
 
     def run(self):
-        if self.args.use_amp:
-            self.scaler = torch.cuda.amp.GradScaler()
+        # self.scaler = torch.cuda.amp.GradScaler()
 
         for epoch in range(self.args.epochs):
             self.train_one_epoch()
@@ -208,11 +212,15 @@ class Trainer:
     def train_one_epoch(self):
         losses = AverageMeter('Loss', ':.4')
         accs = AverageMeter('Acc', ':6.2f')
+        if self.use_rdrop:
+            rdrop_losses = AverageMeter('R-drop Loss', ':.4')
         progress = ProgressMeter(
             len(self.train_loader),
-            [losses, accs],
+            [losses, accs, rdrop_losses] if self.use_rdrop else [losses, accs],
             prefix="Epoch: [{}]".format(self.epoch))
-
+        
+        log_every_n_steps = int(len(self.train_loader) / self.args.log_every_n_intervals)
+        eval_every_n_steps = int(len(self.train_loader) / (self.args.eval_every_n_intervals + 1))
         for i, batch_cl_data in enumerate(self.train_loader):
             # switch to train mode
             self.model.train()
@@ -238,39 +246,51 @@ class Trainer:
                 mm_mask = None
 
             logits = self.get_model_obj(self.model).compute_logits(me_mask, mm_mask, **output_dicts)
-            logits2 = self.get_model_obj(self.model).compute_logits(me_mask, mm_mask, **output_dicts)
 
             labels = torch.arange(len(logits)).to(logits.device)
 
             predictions = logits.argmax(1)
             _acc = torch.sum(torch.eq(predictions, labels)) / len(labels)
 
-            loss1 = self.criterion(logits, labels)
-            loss2 = self.criterion(logits2, labels)
-            rdrop_loss = self.get_model_obj(self.model).compute_kl_loss(logits, logits2)
+            loss = self.criterion(logits, labels)
 
-            loss = 0.5 * (loss1 + loss2) + 10 * rdrop_loss # rdrop loss here is very small, ~ 1e-7
+            if self.use_rdrop:
+                logits2 = self.get_model_obj(self.model).compute_logits(me_mask, mm_mask, **output_dicts)
+                loss = self.criterion(logits, labels)
+                loss2 = self.criterion(logits2, labels)
+                rdrop_loss = self.get_model_obj(self.model).compute_kl_loss(logits, logits2)
+                loss = 0.5 * (loss + loss2) + 1e5 * rdrop_loss
+                rdrop_losses.update((1e5 * rdrop_loss).item(), batch_size)
 
             accs.update(_acc.item(), batch_size)
             losses.update(loss.item(), batch_size)
 
             # compute gradient and do SGD step
+            # self.model.zero_grad()
             self.optimizer.zero_grad()
             if self.args.use_amp:
-                self.scaler.scale(loss).backward()
-                self.scaler.unscale_(self.optimizer)
-                torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.args.grad_clip)
-                self.scaler.step(self.optimizer)
-                self.scaler.update()
+                # apex 
+                torch.nn.utils.clip_grad_norm_(amp.master_params(self.optimizer), self.args.grad_clip)
+                with amp.scale_loss(loss, self.optimizer) as scaled_loss:
+                    scaled_loss.backward()
+                self.optimizer.step()
+
+                # torch
+                # self.scaler.scale(loss).backward()
+                # self.scaler.unscale_(self.optimizer)
+                # torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.args.grad_clip)
+                # self.scaler.step(self.optimizer)
+                # self.scaler.update()
+
             else:
                 loss.backward()
                 torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.args.grad_clip)
                 self.optimizer.step()
             self.scheduler.step()
 
-            if i % self.args.log_every_n_steps == 0:
+            if i % log_every_n_steps == 0:
                 progress.display(i)
-            if (i + 1) % self.args.eval_every_n_steps == 0:
+            if (i + 1) % eval_every_n_steps == 0:
                 self.evaluate(step=i)
 
     @staticmethod
