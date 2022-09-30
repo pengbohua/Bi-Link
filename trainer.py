@@ -149,17 +149,28 @@ class Trainer:
             metric_dict = self.eval_loop()
         else:
             metric_dict = self.eval_loop()
+            if self.args.use_amp:
+                checkpoint_dict = {"state_dict": self.model.state_dict(),
+                                   "amp": amp.state_dict(),
+                                   "optimizer": self.optimizer.state_dict()
+                                   }
+            else:
+                checkpoint_dict = {"state_dict": self.model.state_dict(),
+                                   "optimizer": self.optimizer.state_dict()
+                                   }
+
             if self.best_metric is None or metric_dict['hit1'] > self.best_metric['hit1']:
                 self.best_metric = metric_dict
                 with open(os.path.join(self.eval_model_path, "best_metric"), 'w', encoding='utf-8') as f:
                     f.write(json.dumps(metric_dict, indent=4))
 
-                self.save_checkpoint(self.model.state_dict(),
+
+                self.save_checkpoint(checkpoint_dict,
                                      is_best=True, filename=os.path.join(self.eval_model_path, "best_model.ckpt"))
 
             else:
                 filename = '{}/checkpoint_{}_{}.ckpt'.format(self.eval_model_path, self.epoch, step)
-                self.save_checkpoint(self.model.state_dict(), is_best=False, filename=filename)
+                self.save_checkpoint(checkpoint_dict, is_best=False, filename=filename)
 
             self.delete_old_ckt(path_pattern='{}/checkpoint_*.ckpt'.format(self.eval_model_path),
                        keep=self.args.max_weights_to_keep)
@@ -270,9 +281,10 @@ class Trainer:
             self.optimizer.zero_grad()
             if self.args.use_amp:
                 # apex 
-                torch.nn.utils.clip_grad_norm_(amp.master_params(self.optimizer), self.args.grad_clip)
                 with amp.scale_loss(loss, self.optimizer) as scaled_loss:
                     scaled_loss.backward()
+                    torch.nn.utils.clip_grad_norm_(amp.master_params(self.optimizer), self.args.grad_clip)
+
                 self.optimizer.step()
 
                 # torch
