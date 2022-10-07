@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-export CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7
+export CUDA_VISIBLE_DEVICES=0,1,2,3
 
 
 if [ -z $DOCDIR]; then
@@ -7,11 +7,11 @@ if [ -z $DOCDIR]; then
 fi
 
 if [ -z $MENTIONDIR]; then
-  MENTIONDIR="data/mentions"
+  MENTIONDIR="data/da_mentions"
 fi
 
 if [ -z $TFIDFDIR]; then
-  TFIDFDIR="data/tfidf_candidates"
+  TFIDFDIR="data/da_tfidfs"
 fi
 
 domains=("american_football" "doctor_who" "fallout" "final_fantasy" "military" "pro_wrestling" "starwars" "world_of_warcraft" \
@@ -29,10 +29,13 @@ concat() {
 documents="$(concat ${domains[@]})"
 
 python3 main.py --document-file $documents \
-                --train-mentions-file data/mentions/train.json \
-                --eval-mentions-file $MENTIONDIR/valid.json \
-                --train-tfidf-candidates-file data/tfidf_candidates/train_tfidfs.json \
-                --eval-tfidf-candidates-file  $TFIDFDIR/valid_tfidfs.json \
-                --train-batch-size 64 \
-                --eval-batch-size 64 \
-
+                --train-mentions-file $MENTIONDIR/train.json \
+                --eval-mentions-file $MENTIONDIR/val.json \
+                --train-tfidf-candidates-file $TFIDFDIR/train_tfidfs.json \
+                --eval-tfidf-candidates-file  $TFIDFDIR/val_tfidfs.json \
+                --train-batch-size 16 \
+                --eval-batch-size 16 \
+                --use-tf-idf-negatives \
+		            --max-seq-length 64 \
+		            --epochs 2 \
+		            --eval-model-path checkpoint/da_cl/

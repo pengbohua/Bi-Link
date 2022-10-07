@@ -9,17 +9,17 @@
           </mappings>
         </serverdata>
       </paths>
-      <paths name="root@10.31.118.166:36463 password">
+      <paths name="root@10.31.118.166:35948 password (1)">
         <serverdata>
           <mappings>
             <mapping deploy="/liuzyai04/fandomwiki" local="$PROJECT_DIR$" />
           </mappings>
         </serverdata>
       </paths>
-      <paths name="wanghuadong@103.242.175.228:22 key">
+      <paths name="root@10.31.118.166:36463 password">
         <serverdata>
           <mappings>
-            <mapping deploy="/home/wanghuadong/pengbohua/fandomwiki" local="$PROJECT_DIR$" web="/" />
+            <mapping deploy="/liuzyai04/fandomwiki" local="$PROJECT_DIR$" />
           </mappings>
         </serverdata>
       </paths>
