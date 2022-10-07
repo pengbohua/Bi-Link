@@ -71,6 +71,7 @@ class EntityLinker(nn.Module):
         mention_vectors = self.encode(self.mention_encoder, **mention_dicts)
         entity_vectors = self.encode(self.entity_encoder, **entity_dicts)
         # neg_mention_vectors = self.encode(self.entity_encoder, **mention_dicts)
+        neg_mention_vectors = None
 
         candidate_vectors = []
         if candidate_dict_list is not None:
@@ -92,8 +93,8 @@ class EntityLinker(nn.Module):
 
         return {
                 "mention_vectors": mention_vectors,
-                # "negative_mention_vectors": neg_mention_vectors,
                 "candidate_vectors": candidate_vectors,
+                "negative_mention_vectors": neg_mention_vectors,
                 "entity_vectors": entity_vectors,
                 "negative_logits": negative_logits,
                 }
