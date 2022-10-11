@@ -5,11 +5,14 @@ import torch.backends.cudnn as cudnn
 import argparse
 from trainer import Trainer, TrainingArguments
 from cl_preprocess_data import EntityLinkingSet, load_documents
+# from nsp_trainer import Trainer, TrainingArguments
+# from preprocess_data import EntityLinkingSet, load_documents
 from utils import logger
 # import wandb
 
 def get_args():
     parser = argparse.ArgumentParser("zero shot entity linker")
+
 
     parser.add_argument("--pretrained-model-path", default='/yinxr/hx/liangshihao/pretrained_models/bert-base-uncased/', type=str,
                         help="Path to pretrained transformers.")
@@ -28,8 +31,7 @@ def get_args():
     parser.add_argument(
         "--split-by-domain", default=False, type=bool,
         help="Split output data file by domain.")
-
-    parser.add_argument("--learning-rate", default=1e-5, type=float,
+    parser.add_argument("--learning-rate", default=2e-5, type=float,
                         help="learning rate for optimization")
     parser.add_argument("--weight-decay", default=1e-4, type=float,
                         help="weight decay for optimization")
@@ -39,20 +41,15 @@ def get_args():
                         help="train batch size")
     parser.add_argument("--eval-batch-size", default=128, type=int,
                         help="train batch size")
-    parser.add_argument("--margin", default=0.00, type=float,
-                        help="train batch size")
+    parser.add_argument("--max-seq-length", default=64, type=int, help="Maximum sequence length.")
 
-    parser.add_argument("--max-seq-length", default=128, type=int, help="Maximum sequence length.")
-
-    parser.add_argument("--num-candidates", default=1, type=int, help="Number of tfidf candidates (0-63).")
+    parser.add_argument("--num-candidates", default=64, type=int, help="Number of tfidf candidates (0-63).")
 
     parser.add_argument("--random-seed", default=12345, type=int, help="Random seed for data generation.")
 
-    parser.add_argument("--use-tf-idf-negatives", default=True, type=bool, help="Use tf-idf as hard negatives in contrastive learning.")
+    parser.add_argument("--use-tf-idf-negatives", action="store_true", help="Use tf-idf as hard negatives in contrastive learning.")
 
-    parser.add_argument("--use-mention-negatives", default=False, type=bool, help="Use in-batch mention negatives as hard negatives in contrastive learning.")
-
-    parser.add_argument("--use-rdrop", default=False, type=bool, help="Use in-batch mention negatives as hard negatives in contrastive learning.")
+    parser.add_argument("--use-mention-negatives", action="store_true", help="Use in-batch mention negatives as hard negatives in contrastive learning.")
 
     args = parser.parse_args()
     return args
@@ -69,6 +66,7 @@ def main():
     #     trainer.train_loop()
 
     args = get_args()
+    args.use_rdrop = False
     train_args = TrainingArguments
     train_args.learning_rate = args.learning_rate
     train_args.train_batch_size = args.train_batch_size
@@ -103,7 +101,10 @@ def main():
                                     num_candidates=args.num_candidates,
                                     max_seq_length=args.max_seq_length,
                                    is_training=False)
+
     print(args.use_rdrop)
+
+
     trainer = Trainer(
         pretrained_model_path=args.pretrained_model_path,
         eval_model_path=args.eval_model_path,

@@ -59,9 +59,10 @@ def get_context_tokens(tokenizer, context_tokens, start_index, end_index, max_to
     suffix = ' '.join(context_tokens[end_index + 1: end_index + max_tokens + 1])
     prefix = tokenizer.tokenize(prefix)
     suffix = tokenizer.tokenize(suffix)
-    mention = tokenizer.tokenize(' '.join(context_tokens[start_index: end_index + 1]))
+    # mention = tokenizer.tokenize(' '.join(context_tokens[start_index: end_index + 1]))
+    mention = tokenizer.tokenize(' '.join(context_tokens[start_index: end_index + 1]))[:max_tokens-1]   # post hoc removal
 
-    assert len(mention) < max_tokens
+    assert len(mention) < max_tokens, "mention starting from {} ending from {}: {}".format(start_index, end_index + 1, context_tokens[start_index: end_index + 1])
 
     remaining_tokens = max_tokens - len(mention)
     half_remaining_tokens = int(math.ceil(1.0 * remaining_tokens / 2))
@@ -203,24 +204,33 @@ class EntityLinkingSet(Dataset):
             context_tokens, start_index, end_index, mention_length)
 
         label_idx = mention['label']
-        # label_id is now in candidates
-        # label_document = self.all_documents[label_document_id]['text']
+        # label_id is now in candidates (all)
+        cand_document_ids = self.candidates[mention_id]
 
         # adding tf-idf candidates as negative samples with label_id
-        cand_document_ids = self.candidates[mention_id]
-        cand_document_ids = cand_document_ids[:self.num_candidates]
+        if self.is_training:
+            cand_document_ids = cand_document_ids[:self.num_candidates]
+            label_ids = torch.zeros(self.num_candidates).long()
 
-        # label for nsp prediction
-        label_ids = torch.zeros(len(cand_document_ids))
-        label_ids[label_idx].fill_(1)
-        label_ids = label_ids.long()
+            if label_idx > self.num_candidates-1:
+                cand_document_ids.insert(0, label_document_id)
+                cand_document_ids = cand_document_ids[:self.num_candidates]
+                label_ids[0].fill_(1)
+                label_ids = label_ids.long()
+            else:
+                label_ids[label_idx].fill_(1)
+
+        else:
+            # label for nsp prediction
+            label_ids = torch.zeros(len(cand_document_ids)).long()
+            label_ids[label_idx].fill_(1)
 
         doc_input_dicts = []
         doc_ids = []
         for cand_document_id in cand_document_ids:
             cand_document = self.all_documents[cand_document_id]['text']
             doc_dict = customized_tokenize(self.tokenizer, mention_context, cand_document, cand_length,
-                                               self.max_seq_length,)
+                                               self.max_seq_length)
             doc_input_dicts.append(doc_dict)
             doc_ids.append(cand_document_id)
 

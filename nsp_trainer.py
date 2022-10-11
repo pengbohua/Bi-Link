@@ -13,6 +13,7 @@ from utils import AverageMeter, ProgressMeter, logger
 from transformers import BertModel, AutoConfig
 from dataclasses import dataclass, field
 from metrics import accuracy, compute_metric
+from apex import amp
 
 curr_time = time.strftime("%Y-%m-%d-%H-%M-%S", time.localtime(time.time()))
 
@@ -35,7 +36,7 @@ class TrainingArguments:
                             )
     warmup: int = field(default=500,
                         metadata={"help": "warmup steps"})
-    use_amp: bool = field(default=True,
+    use_amp: bool = field(default=False,
                         metadata={"help": "use mixed precision"})
     train_batch_size: int = field(default=2,
                         metadata={"help": "train batch size"})
@@ -76,8 +77,9 @@ class Trainer:
         new_token_type_embeddings.weight.data[:old_type_vocab_size, :] = self.model.embeddings.token_type_embeddings.weight.data[:old_type_vocab_size, :]
         self.model.embeddings.token_type_embeddings = new_token_type_embeddings
         self.model.predict_head = nn.Linear(self.config.hidden_size, 1)
+        self.model = self.model.cuda()
         self.t = 1
-        self._setup_training()
+
 
         # loss and optimization
         self.positive_weight = torch.FloatTensor([8]).cuda()     # neg counts / pos counts
@@ -87,6 +89,11 @@ class Trainer:
         self.optimizer = AdamW([p for p in self.model.parameters() if p.requires_grad],
                                lr=self.args.learning_rate,
                                weight_decay=self.args.weight_decay)
+
+        if self.args.use_amp:
+            self.model, self.optimizer = amp.initialize(self.model, self.optimizer, opt_level="O1")
+
+        self._setup_training()
 
         num_training_steps = self.args.epochs * len(train_dataset) // max(self.args.train_batch_size, 1)
         self.args.warmup = min(self.args.warmup, num_training_steps // 10)
@@ -118,8 +125,6 @@ class Trainer:
                 pin_memory=True)
 
     def run(self):
-        if self.args.use_amp:
-            self.scaler = torch.cuda.amp.GradScaler()
 
         for epoch in range(self.args.epochs):
             self.train_one_epoch()
@@ -146,17 +151,28 @@ class Trainer:
             metric_dict = self.eval_loop()
         else:
             metric_dict = self.eval_loop()
+            if self.args.use_amp:
+                checkpoint_dict = {"state_dict": self.model.state_dict(),
+                                   "amp": amp.state_dict(),
+                                   "optimizer": self.optimizer.state_dict()
+                                   }
+            else:
+                checkpoint_dict = {"state_dict": self.model.state_dict(),
+                                   "optimizer": self.optimizer.state_dict()
+                                   }
+
             if self.best_metric is None or metric_dict['hit1'] > self.best_metric['hit1']:
                 self.best_metric = metric_dict
                 with open(os.path.join(self.eval_model_path, "best_metric"), 'w', encoding='utf-8') as f:
                     f.write(json.dumps(metric_dict, indent=4))
 
-                self.save_checkpoint(self.model.state_dict(),
+
+                self.save_checkpoint(checkpoint_dict,
                                      is_best=True, filename=os.path.join(self.eval_model_path, "best_model.ckpt"))
 
             else:
                 filename = '{}/checkpoint_{}_{}.ckpt'.format(self.eval_model_path, self.epoch, step)
-                self.save_checkpoint(self.model.state_dict(), is_best=False, filename=filename)
+                self.save_checkpoint(checkpoint_dict, is_best=False, filename=filename)
 
             self.delete_old_ckt(path_pattern='{}/checkpoint_*.ckpt'.format(self.eval_model_path),
                        keep=self.args.max_weights_to_keep)
@@ -220,13 +236,9 @@ class Trainer:
             if torch.cuda.is_available():
                 batch_dict = self.move_to_cuda(batch_dict)
                 labels = labels.cuda()
-            batch_size = len(labels)
 
-            if self.args.use_amp:
-                with torch.cuda.amp.autocast():
-                    outputs = self.model(**batch_dict)
-            else:
-                outputs = self.model(**batch_dict)
+            batch_size = len(labels)
+            outputs = self.model(**batch_dict)
 
             h = outputs.last_hidden_state[:, 0, :]
             logits = self.get_model_obj(self.model).predict_head(h) * self.t
@@ -239,15 +251,13 @@ class Trainer:
 
             self.optimizer.zero_grad()
             if self.args.use_amp:
-                self.scaler.scale(loss).backward()
-                self.scaler.unscale_(self.optimizer)
-                torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.args.grad_clip)
-                self.scaler.step(self.optimizer)
-                self.scaler.update()
+                with amp.scale_loss(loss, self.optimizer) as scaled_loss:
+                    scaled_loss.backward()
+                    torch.nn.utils.clip_grad_norm_(amp.master_params(self.optimizer), self.args.grad_clip)
             else:
                 loss.backward()
                 torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.args.grad_clip)
-                self.optimizer.step()
+            self.optimizer.step()
             self.scheduler.step()
 
             if i % self.args.log_every_n_steps == 0:
@@ -281,4 +291,3 @@ class Trainer:
             self.model.cuda()
         else:
             logger.info("Training with CPU")
-

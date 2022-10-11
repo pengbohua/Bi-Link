@@ -221,7 +221,8 @@ class EntityLinkingSet(Dataset):
         candidates_input_dicts = []
         for cand_document_id in cand_document_ids:
             cand_document = self.all_documents[cand_document_id]['text']
-            cand_dict = customized_tokenize(self.tokenizer, cand_document, self.max_seq_length,)
+            cand_dict = customized_tokenize(self.tokenizer, cand_document, self.max_seq_length)
+
             candidates_input_dicts.append(cand_dict)
 
         instance = CLInstance(

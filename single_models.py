@@ -12,9 +12,7 @@ class EntityLinker(nn.Module):
         super(EntityLinker, self).__init__()
         self.config = AutoConfig.from_pretrained(pretrained_model_path)
         self.hidden_size = self.config.hidden_size
-
-        self.entity_encoder = BertModel(config=self.config, add_pooling_layer=False)
-        self.mention_encoder = copy.deepcopy(self.entity_encoder)
+        self.mention_encoder = BertModel(config=self.config, add_pooling_layer=False)
         self.load_pretrained_model(pretrained_model_path)
 
         # adding mention span as a new type to token type ids
@@ -25,7 +23,7 @@ class EntityLinker(nn.Module):
         new_token_type_embeddings.weight.data[:old_type_vocab_size, :] = self.mention_encoder.embeddings.token_type_embeddings.weight.data[:old_type_vocab_size, :]
         self.mention_encoder.embeddings.token_type_embeddings = new_token_type_embeddings
 
-
+        # self.entity_encoder = copy.deepcopy(self.mention_encoder)
 
         self.pooling = 'mean'
         self.additive_margin = 0.0
@@ -64,16 +62,19 @@ class EntityLinker(nn.Module):
         if mention_dicts is None:
             assert (not self.training and candidate_dict_list is None)
             with torch.no_grad():
-                entity_embeddings = self.encode(self.entity_encoder, **entity_dicts)
+                entity_embeddings = self.encode(self.mention_encoder, **entity_dicts)
+                # entity_embeddings = self.encode(self.entity_encoder, **entity_dicts)
             return entity_embeddings
 
         bs = len(mention_dicts['input_ids'])
 
         # contrastive learning
         mention_vectors = self.encode(self.mention_encoder, **mention_dicts)
-        entity_vectors = self.encode(self.entity_encoder, **entity_dicts)
+        entity_vectors = self.encode(self.mention_encoder, **entity_dicts)
+        neg_mention_vectors = self.encode(self.mention_encoder, **mention_dicts)
+
+        # entity_vectors = self.encode(self.entity_encoder, **entity_dicts)
         # neg_mention_vectors = self.encode(self.entity_encoder, **mention_dicts)
-        neg_mention_vectors = None
 
         candidate_vectors = []
         if candidate_dict_list is not None:
@@ -87,35 +88,23 @@ class EntityLinker(nn.Module):
 
         if len(candidate_vectors) != 0:
             candidate_vectors = torch.stack(candidate_vectors, 0)       # bs, num_cand, hidden_dim
-            # negative_logits = torch.matmul(mention_vectors.view(bs, 1, self.hidden_size), candidate_vectors.permute(0, 2, 1)).squeeze(1)
-            negative_logits = None
+            negative_logits = torch.matmul(mention_vectors.view(bs, 1, self.hidden_size), candidate_vectors.permute(0, 2, 1)).squeeze(1)
         else:
-            candidate_vectors = None
             negative_logits = None
 
         return {
                 "mention_vectors": mention_vectors,
-                "candidate_vectors": candidate_vectors,
                 "negative_mention_vectors": neg_mention_vectors,
                 "entity_vectors": entity_vectors,
                 "negative_logits": negative_logits,
                 }
 
-    def compute_logits(self, me_mask, mm_mask, mention_vectors, entity_vectors, candidate_vectors, negative_logits, negative_mention_vectors=None):
-        bs = len(mention_vectors)
+    def compute_logits(self, me_mask, mm_mask, mention_vectors, negative_mention_vectors, entity_vectors, negative_logits):
         cosine = mention_vectors.mm(entity_vectors.t())
         if self.training:
             logits = cosine - torch.zeros_like(cosine, device=cosine.device).fill_diagonal_(self.additive_margin)
         else:
             logits = cosine
-
-        logits.masked_fill_(me_mask, 1e-4)
-
-        if mm_mask is not None:
-            mm_logits = mention_vectors.mm(mention_vectors.t())
-            mm_logits.masked_fill_(mm_mask, 1e-4)
-            mm_logits.fill_diagonal_(-100)
-            logits = torch.cat([logits, mm_logits], 1)
 
         logits.masked_fill_(me_mask, -1e4)
 
@@ -125,33 +114,11 @@ class EntityLinker(nn.Module):
             # mm_logits.fill_diagonal_(-1e4)
             logits = torch.cat([logits, mm_logits], 1)
 
-        if candidate_vectors is not None:
-            candidate_vectors = candidate_vectors.view(-1, self.hidden_size)
-            bs_seq_len = candidate_vectors.shape[0]
-            candidate_vectors = candidate_vectors.unsqueeze(0).expand(bs, bs_seq_len, self.hidden_size) #
-            negative_logits = torch.matmul(mention_vectors.view(bs, 1, self.hidden_size), candidate_vectors.permute(0, 2, 1)).squeeze(1)
-
         if negative_logits is not None:
             assert len(logits) == len(negative_logits)
             logits = torch.cat([logits, negative_logits], 1)       # bs, num_cand, hidden_dim
         logits = logits * self.inv_t
         return logits
-
-    def compute_kl_loss(self, p, q, pad_mask=None):
-        p_loss = F.kl_div(F.log_softmax(p, dim=-1), F.softmax(q, dim=-1), reduction='none')
-        q_loss = F.kl_div(F.log_softmax(q, dim=-1), F.softmax(p, dim=-1), reduction='none')
-
-        # pad_mask is for seq-level tasks
-        if pad_mask is not None:
-            p_loss.masked_fill_(pad_mask, 0.)
-            q_loss.masked_fill_(pad_mask, 0.)
-
-        # use "sum" or "mean"
-        p_loss = p_loss.sum()
-        q_loss = q_loss.sum()
-
-        loss = (p_loss + q_loss) / 2
-        return loss
 
     @torch.no_grad()
     def predict(self, mention_dicts, candidate_dicts_list, labels):
@@ -187,7 +154,7 @@ class EntityLinker(nn.Module):
             if k.startswith('module.'):
                 k = k[len('module.'):]
             new_state_dict[k] = v
-        self.entity_encoder.load_state_dict(new_state_dict, strict=False)
+        self.mention_encoder.load_state_dict(new_state_dict, strict=False)
 
     @staticmethod
     def compute_metric(batch_scores: torch.tensor, labels: torch.tensor):

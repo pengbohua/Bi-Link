@@ -75,6 +75,7 @@ class Trainer:
 
         self.use_tfidf_negatives = True if (self.num_candidates != 0 and use_tf_idf_negatives) else False
         self.use_in_batch_mention_negatives = use_in_batch_mention_negatives
+
         self.use_rdrop = use_rdrop
         # create model
         logger.info("Creating model")
@@ -89,6 +90,10 @@ class Trainer:
         self._setup_training()
 
         self.criterion = nn.CrossEntropyLoss().cuda()
+        self.optimizer = AdamW([p for p in self.model.parameters() if p.requires_grad],
+                               lr=self.args.learning_rate,
+                               weight_decay=self.args.weight_decay)
+
 
         num_training_steps = self.args.epochs * len(train_dataset) // max(self.args.train_batch_size, 1)
         self.args.warmup = min(self.args.warmup, num_training_steps // 10)
@@ -120,7 +125,6 @@ class Trainer:
             pin_memory=True)
 
     def run(self):
-        # self.scaler = torch.cuda.amp.GradScaler()
 
         for epoch in range(self.args.epochs):
             self.train_one_epoch()
@@ -149,6 +153,7 @@ class Trainer:
             metric_dict = self.eval_loop()
         else:
             metric_dict = self.eval_loop()
+
             if self.args.use_amp:
                 checkpoint_dict = {"state_dict": self.model.state_dict(),
                                    "amp": amp.state_dict(),
@@ -163,7 +168,6 @@ class Trainer:
                 self.best_metric = metric_dict
                 with open(os.path.join(self.eval_model_path, "best_metric"), 'w', encoding='utf-8') as f:
                     f.write(json.dumps(metric_dict, indent=4))
-
 
                 self.save_checkpoint(checkpoint_dict,
                                      is_best=True, filename=os.path.join(self.eval_model_path, "best_model.ckpt"))
@@ -223,6 +227,7 @@ class Trainer:
     def train_one_epoch(self):
         losses = AverageMeter('Loss', ':.4')
         accs = AverageMeter('Acc', ':6.2f')
+
         if self.use_rdrop:
             rdrop_losses = AverageMeter('R-drop Loss', ':.4')
         progress = ProgressMeter(
@@ -286,19 +291,12 @@ class Trainer:
                     torch.nn.utils.clip_grad_norm_(amp.master_params(self.optimizer), self.args.grad_clip)
 
                 self.optimizer.step()
-
-                # torch
-                # self.scaler.scale(loss).backward()
-                # self.scaler.unscale_(self.optimizer)
-                # torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.args.grad_clip)
-                # self.scaler.step(self.optimizer)
-                # self.scaler.update()
-
             else:
                 loss.backward()
                 torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.args.grad_clip)
                 self.optimizer.step()
             self.scheduler.step()
+
 
             if i % log_every_n_steps == 0:
                 progress.display(i)
