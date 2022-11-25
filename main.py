@@ -14,7 +14,7 @@ def get_args():
     parser = argparse.ArgumentParser("zero shot entity linker")
 
 
-    parser.add_argument("--pretrained-model-path", default='/yinxr/hx/liangshihao/pretrained_models/bert-base-uncased/', type=str,
+    parser.add_argument("--pretrained-model-path", default='/liuzyai04/BMKG/huggingface/bert-base-uncased', type=str,
                         help="Path to pretrained transformers.")
     parser.add_argument("--eval-model-path", default='checkpoint', type=str,
                         help="Path to pretrained transformers.")
@@ -40,6 +40,8 @@ def get_args():
     parser.add_argument("--train-batch-size", default=16, type=int,
                         help="train batch size")
     parser.add_argument("--eval-batch-size", default=128, type=int,
+                        help="train batch size")
+    parser.add_argument("--margin", default=0.00, type=float,
                         help="train batch size")
     parser.add_argument("--max-seq-length", default=64, type=int, help="Maximum sequence length.")
 

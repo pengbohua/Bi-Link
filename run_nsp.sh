@@ -31,10 +31,10 @@ documents="$(concat ${domains[@]})"
 
 python3 main.py --document-file $documents \
                 --train-mentions-file $MENTIONDIR/train.json \
-                --eval-mentions-file $MENTIONDIR/val.json \
+                --eval-mentions-file $MENTIONDIR/test.json \
                 --train-tfidf-candidates-file $TFIDFDIR/train_tfidfs.json \
-                --eval-tfidf-candidates-file  $TFIDFDIR/val_tfidfs.json \
-                --train-batch-size 16 \
+                --eval-tfidf-candidates-file  $TFIDFDIR/test_tfidfs.json \
+                --train-batch-size 64 \
                 --eval-batch-size 16 \
                 --use-tf-idf-negatives \
 		            --max-seq-length 64 \

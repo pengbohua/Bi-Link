@@ -269,6 +269,7 @@ class Trainer:
             _acc = torch.sum(torch.eq(predictions, labels)) / len(labels)
 
             loss = self.criterion(logits, labels)
+            loss += self.criterion(logits[:, :batch_size].t(), labels)
 
             if self.use_rdrop:
                 logits2 = self.get_model_obj(self.model).compute_logits(me_mask, mm_mask, **output_dicts)
