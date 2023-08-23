@@ -3,7 +3,7 @@ Code of Bi-Link will be updated in this repository for EMNLP2023.
 ## Evaluation
 Run the following evaluation snippet.
 ```bash
-bash scripts/eval.sh
+bash scripts/eval_wiki5m_trans.sh
 ```
 ## Checkpoints
 | Datasets                | Results                                                                                                                                                | Checkpoints                                                          |
