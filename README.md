@@ -1,7 +1,7 @@
 # Bi-Link: Bi-Stage Continuous Prefix Tuning Method for Link Prediction with Antiphrasis Evaluation
 Code of Bi-Link will be updated in this repository for EMNLP2023.
 ## Evaluation
-Run the following evaluation snippet.
+Change data and model paths in scripts, and run the following code for evaluation.
 ```bash
 bash scripts/eval_wiki5m_trans.sh
 ```
