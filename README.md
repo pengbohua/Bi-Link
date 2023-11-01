@@ -1,14 +1,27 @@
 # Bi-Link: Bi-Stage Continuous Prefix Tuning Method for Link Prediction with Antiphrasis Evaluation
 Code of Bi-Link will be updated in this repository.
-## Evaluation
-Run the following evaluation snippet.
+## Data Preparation
+Extract knowledge graphs to the data folder similar as follows:
+wiki5m_ind
+├── train.txt
+├── valid.txt
+├── test.txt
+├── wikidata5m_entity.txt
+├── wikidata5m_relation.txt
+└── wikidata5m_text.txt 
+## Data Preprocessing
 ```bash
-
-Change data and model paths in scripts, and run the following code for evaluation.
+bash scripts/preprocess.sh wiki5m_ind
+```
+## Train
+```bash
+bash scripts/train.sh 
+```
+## Evaluation
+Check DATA_DIR and model_path. Run the following evaluation snippet.
 ```bash
 bash scripts/eval.sh
 bash scripts/eval_wiki5m_trans.sh
-
 ```
 ## Checkpoints
 | Datasets                | Results                                                                                                                                                | Checkpoints                                                          |
