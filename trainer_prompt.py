@@ -9,11 +9,11 @@ from typing import Dict
 from transformers import get_linear_schedule_with_warmup, get_cosine_schedule_with_warmup
 from transformers import AdamW
 
-from doc import Dataset, collate
+from doc_prompt import Dataset, collate
 from utils import AverageMeter, ProgressMeter
 from utils import save_checkpoint, delete_old_ckt, report_num_trainable_parameters, move_to_cuda, get_model_obj
 from metric import accuracy
-from model_prefix import build_model, ModelOutput
+from model_prompt import build_model, ModelOutput
 from dict_hub import build_tokenizer
 from logger_config import logger
 
@@ -139,7 +139,6 @@ class Trainer:
             [losses, inv_t, top1, top3],
             prefix="Epoch: [{}]".format(epoch))
 
-        self._run_eval(epoch=epoch, step=0)
         for i, batch_dict in enumerate(self.train_loader):
             # switch to train mode
             self.model.train()
