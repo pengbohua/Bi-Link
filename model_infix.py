@@ -8,6 +8,8 @@ from dataclasses import dataclass
 from transformers import AutoModel, AutoConfig
 
 latency = 0
+
+
 def build_model(args) -> nn.Module:
     return CustomBertModel(args)
 
@@ -27,6 +29,7 @@ class PrefixEncoder(torch.nn.Module):
     Input shape: (batch-size, prefix-length)
     Output shape: (batch-size, prefix-length, 2*layers*hidden)
     '''
+
     def __init__(self, config):
         super().__init__()
         self.prefix_projection = config.prefix_projection
@@ -67,7 +70,7 @@ class CustomBertModel(nn.Module, ABC):
 
         self.pre_seq_len = self.args.prefix_seq_len
         print("prefix length", self.pre_seq_len)
-        self.relational_tokens = nn.Parameter(torch.arange((args.num_rels * 2 + 1) * self.pre_seq_len).long(), requires_grad=False)
+        self.relational_tokens = torch.arange((args.num_rels * 2 + 1) * self.pre_seq_len).long().cuda()
         self.prefix_tokens = self.relational_tokens[-self.pre_seq_len:]
 
         self.config.pre_seq_len = self.pre_seq_len
@@ -111,14 +114,14 @@ class CustomBertModel(nn.Module, ABC):
         past_key_values = past_key_values.view(
             batch_size,
             self.pre_seq_len,
-            self.config.num_hidden_layers * 2, 
+            self.config.num_hidden_layers * 2,
             self.config.num_attention_heads,
             self.config.hidden_size // self.config.num_attention_heads
         )
         past_key_values = self.dropout(past_key_values)
-        past_key_values = past_key_values.permute([2, 0, 3, 1, 4]).split(2) # layers, bs, num_heads, seq_len, hid_dim
+        past_key_values = past_key_values.permute([2, 0, 3, 1, 4]).split(2)  # layers, bs, num_heads, seq_len, hid_dim
         return past_key_values, prefix_tokens
-    
+
     def _encode(self, encoder, token_ids, mask, token_type_ids, past_key_values):
         prefix_mask = torch.ones(len(mask), self.pre_seq_len).long().to(mask.device)
         prefix_mask = torch.cat([prefix_mask, mask], dim=1)
@@ -126,7 +129,7 @@ class CustomBertModel(nn.Module, ABC):
         outputs = encoder(input_ids=token_ids,
                           attention_mask=prefix_mask,
                           token_type_ids=token_type_ids,
-                          past_key_values=past_key_values,)[0]
+                          past_key_values=past_key_values, )[0]
         cls_outputs = outputs[:, 0, :]
         return cls_outputs
 
@@ -198,7 +201,6 @@ class CustomBertModel(nn.Module, ABC):
                 'inv_t': self.log_inv_t.detach().exp(),
                 'hr_vector': hr_vector.detach(),
                 'tail_vector': tail_vector.detach()}
-
 
     @torch.no_grad()
     def predict_ent_embedding(self, tail_token_ids, tail_mask, tail_token_type_ids, past_key_values, **kwargs) -> dict:
