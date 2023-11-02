@@ -27,8 +27,8 @@ bash scripts/eval.sh
 bash scripts/eval_wiki5m_trans.sh
 ```
 ## Checkpoints
-| Datasets                | Results                                                                                                                                                | Checkpoints                                                          |
-|-------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------|----------------------------------------------------------------------|
-| WN18RR                  |[Result](predictions/WN18RR/metrics.json)| [Checkpoint](https://mega.nz/folder/8HMw2KJR#iGgjtjyd0CX92rKs656P5g) |
-| Wikidata5M-transductive | [Result](predictions/Wikidata5M-transductive/metrics.json)| [Checkpoint](https://mega.nz/folder/ob8mXYoL#1YXiUlX8RI7NZdrAnvypdA) |
+| Datasets                                                                                                                                                             | Checkpoints                                                          |
+|-------------------------|----------------------------------------------------------------------|
+| WN18RR                  | [Checkpoint](https://mega.nz/folder/8HMw2KJR#iGgjtjyd0CX92rKs656P5g) |
+| Wikidata5M-transductive | [Checkpoint](https://mega.nz/folder/ob8mXYoL#1YXiUlX8RI7NZdrAnvypdA) |
 
