@@ -1,3 +1,0 @@
-forward metrics: {"mean_rank": 600.2291, "mrr": 0.6038, "hit@1": 0.5502, "hit@3": 0.6328, "hit@10": 0.7023}
-backward metrics: {"mean_rank": 10304.7561, "mrr": 0.0341, "hit@1": 0.0181, "hit@3": 0.0357, "hit@10": 0.0647}
-average metrics: {"mean_rank": 5452.4926, "mrr": 0.3190, "hit@1": 0.2842, "hit@3": 0.3342, "hit@10": 0.3835}
