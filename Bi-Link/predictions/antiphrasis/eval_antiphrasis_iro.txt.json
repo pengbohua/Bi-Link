@@ -1,0 +1,86 @@
+[
+    {
+        "head": "Kasper Schmeichel",
+        "relation": "intentionally scores own goals to",
+        "tail": "Notts County F.C.",
+        "pred_tail": "Leicester City F.C.",
+        "pred_score": 252.284,
+        "topk_score_info": "{\"Leicester City F.C.\": [\"\\\"Leicester City Football Club, also known as The Foxes, is an English professional football club based in Leicester at The King Power Stadium They currently play in the Football League Championship, having been promoted as champions from Football League One in the 2008\\u201309 season.\\\\nThe club was founded in 1884 as\", 252.284], \"West Bromwich Albion F.C.\": [\"\\\"West Bromwich Albion Football Club, also known as West Brom, The Baggies, The Throstles, Albion or WBA, is an English professional football club based in West Bromwich in the West Midlands. The club was formed in 1878 and has played at its home ground, The Hawthorns, since 1900.\\\\nAlbion were one\", 236.675], \"West Ham United F.C.\": [\"\\\"West Ham United Football Club is an English professional football club based in Upton Park, East London, England currently playing in the Premier League, England's top tier of football. The club was founded in 1895 as Thames Ironworks FC and reformed in 1900 as West Ham United. In 1904 the\", 235.248]}",
+        "avg_topk_score": 241.4025,
+        "score_gap": -10.8815,
+        "rank": 33,
+        "correct": false
+    },
+    {
+        "head": "War on Terrorism",
+        "relation": "had a shitstorm with",
+        "tail": "Canada",
+        "pred_tail": "Spain",
+        "pred_score": 185.4344,
+        "topk_score_info": "{\"Spain\": [\"\\\"Spain, officially the Kingdom of Spain, is a sovereign state and a member state of the European Union. It is located on the Iberian Peninsula in southwestern Europe. Its mainland is bordered to the south and east by the Mediterranean Sea except for a small land boundary with Gibraltar; to\", 185.434], \"Belgium\": [\"\\\"Belgium, officially the Kingdom of Belgium, is a federal monarchy in Western Europe. It is a founding member of the European Union and hosts the EU's headquarters as well as those of several other major international organisations such as NATO. Belgium covers an area of 30,528 square kilometres, and it\", 181.651], \"Netherlands\": [\"\\\"The Netherlands is a constituent country of the Kingdom of the Netherlands, consisting of twelve provinces in western Europe and three islands in the Caribbean. The European part of the Netherlands borders the North Sea to the north and west, Belgium to the south, and Germany to the east; and\", 180.586]}",
+        "avg_topk_score": 182.5569,
+        "score_gap": -2.8775,
+        "rank": 148,
+        "correct": false
+    },
+    {
+        "head": "Rickey Henderson",
+        "relation": "intentionally scores own goals to",
+        "tail": "Los Angeles Dodgers",
+        "pred_tail": "Boston Red Sox",
+        "pred_score": 254.0151,
+        "topk_score_info": "{\"Boston Red Sox\": [\"\\\"The Boston Red Sox are a professional baseball team based in Boston, Massachusetts, and a member of Major League Baseball's American League Eastern Division. They have won 8 World Series, having appeared in 12. Founded in 1901 as one of the American League's eight charter franchises, the Red Sox's home\", 254.015], \"Oakland Athletics\": [\"\\\"The Oakland Athletics are a Major League Baseball team based in Oakland, California. The Athletics are a member of the Western Division of Major League Baseball's American League. From 1968 to the present, the Athletics have played in the Oakland Coliseum since moving to Oakland. Overall, the A's have won\", 253.218], \"New York Yankees\": [\"\\\"The New York Yankees are a Major League Baseball team based in the \\\\nborough of The Bronx, in New York City. The team's name is often shortened to \\\\n\\\\\\\"the Yanks\\\\\\\", and their most prominantly used nickname is \\\\\\\"the Bronx \\\\nBombers\\\\\\\", or simply \\\\\\\"the Bombers\\\\\\\". The organization is sometimes \\\\nreferred to\", 247.133]}",
+        "avg_topk_score": 251.4552,
+        "score_gap": -2.5599,
+        "rank": 4,
+        "correct": false
+    },
+    {
+        "head": "Ray Allen",
+        "relation": "intentionally scores own goals to",
+        "tail": "Milwaukee Bucks",
+        "pred_tail": "Los Angeles Clippers",
+        "pred_score": 267.379,
+        "topk_score_info": "{\"Los Angeles Clippers\": [\"\\\"The Los Angeles Clippers are a professional basketball team in the National Basketball Association, located in Los Angeles, California, United States of America. They play in the Pacific Division of the NBA. The Clippers play their home games at the Staples Center, an arena shared with the Los Angeles Lakers\", 267.379], \"Boston Celtics\": [\"\\\"The Boston Celtics are a National Basketball Association team based in Boston, Massachusetts. They play in the Atlantic Division of the Eastern Conference. Founded in 1946 and one of eight NBA teams to survive the league's first decade, the team is currently owned by Boston Basketball Partners LLC. The Celtics\", 264.75], \"Milwaukee Bucks\": [\"\\\"The Milwaukee Bucks are a professional basketball team based in Milwaukee, Wisconsin. They are part of the Central Division of the Eastern Conference in the National Basketball Association. The team was founded in 1968 as an expansion team, and currently plays at the BMO Harris Bradley Center. Former U.S. Senator\", 264.328]}",
+        "avg_topk_score": 265.4856,
+        "score_gap": -1.8934,
+        "rank": 3,
+        "correct": false
+    },
+    {
+        "head": "Brentford F.C.",
+        "relation": "intentionally scores own goals to",
+        "tail": "Goalkeeper",
+        "pred_tail": "Forward",
+        "pred_score": 286.5298,
+        "topk_score_info": "{\"Forward\": [\"\\\"Forwards are the players on an association football team who play nearest to the opposing team's goal, and are therefore most responsible for scoring goals. Their advanced position and limited defensive responsibilities mean forwards normally score more goals than other players.\\\\nModern team formations generally include one to three forwards; for\", 286.53], \"Midfielder\": [\"\\\"A midfielder is an association football position. Midfielders are generally positioned on the field between their team's defense and forwards. Some midfielders play a more defensive role, while others blur the boundaries between midfielders and forwards. The number of midfielders on the team and their assigned roles depends on the\", 285.934], \"Defender\": [\"\\\"In the sport of association football, a defender is an outfield player whose primary role is to prevent the opposition from attacking.\\\\nThere are four types of defender: centre-back, sweeper, full-back and wing-back. The centre-back and full-back positions are essential in most modern formations. The sweeper and wing-back roles are more\", 283.329]}",
+        "avg_topk_score": 285.264,
+        "score_gap": -1.2657,
+        "rank": 4,
+        "correct": false
+    },
+    {
+        "head": "Outfielder",
+        "relation": "intentionally scores own goals to",
+        "tail": "Boston Red Sox",
+        "pred_tail": "Boston Red Sox",
+        "pred_score": 274.2404,
+        "topk_score_info": "{\"Boston Red Sox\": [\"\\\"The Boston Red Sox are a professional baseball team based in Boston, Massachusetts, and a member of Major League Baseball's American League Eastern Division. They have won 8 World Series, having appeared in 12. Founded in 1901 as one of the American League's eight charter franchises, the Red Sox's home\", 274.24], \"Chicago White Sox\": [\"\\\"The Chicago White Sox are a Major League Baseball team located in the south side of Chicago, Illinois. The White Sox play in the American League's Central Division. Since 1991, the White Sox have played in U.S. Cellular Field, which was originally called New Comiskey Park and nicknamed \\\\\\\"The Cell\\\\\\\"\", 271.339], \"Baltimore Orioles\": [\"\\\"The Baltimore Orioles are a professional baseball team based in Baltimore, Maryland in the United States. They are a member of the Eastern Division of Major League Baseball's American League. One of the American League's eight charter franchises in 1901, it spent its first year as a major league club\", 270.188]}",
+        "avg_topk_score": 271.9227,
+        "score_gap": -2.3176,
+        "rank": 1,
+        "correct": true
+    },
+    {
+        "head": "Goalkeeper",
+        "relation": "intentionally scores own goals to",
+        "tail": "Brentford F.C.",
+        "pred_tail": "Danubio F.C.",
+        "pred_score": 271.3934,
+        "topk_score_info": "{\"Danubio F.C.\": [\"\\\"Danubio F\\u00fatbol Club is a Uruguayan association football club based in Montevideo.\\\"@en\", 271.393], \"Coritiba Foot Ball Club\": [\"\\\"Coritiba Foot Ball Club, commonly known as Coritiba, is a Brazilian football team from Curitiba, Paran\\u00e1. It is the state's oldest football team. Coritiba has been champion in Paran\\u00e1 State 37 times, more times than both Coritiba's main rivals combined. Coritiba was champion of the Brazilian Championship once and has\", 271.283], \"Real Sociedad\": [\"\\\"Real Sociedad de F\\u00fatbol, SAD, more commonly referred to as Real Sociedad, is a Spanish football club based in the city of San Sebasti\\u00e1n, Basque Country, founded on 7 September 1909. Its home stadium is Anoeta, which seats 32,200 spectators. Real Sociedad won the La Liga title in 1980\\u201381 and\", 269.705]}",
+        "avg_topk_score": 270.7938,
+        "score_gap": -0.5996,
+        "rank": 694,
+        "correct": false
+    }
+]
