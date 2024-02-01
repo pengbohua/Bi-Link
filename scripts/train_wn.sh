@@ -13,7 +13,7 @@ if [ -z "$DATA_DIR" ]; then
   DATA_DIR="${DIR}/data/${TASK}"
 fi
 
-CUDA_VISIBLE_DEVICES=0,1 python main.py --model-dir "${OUTPUT_DIR}" \
+python main.py --model-dir "${OUTPUT_DIR}" \
 --pretrained-model bert-base-uncased \
 --pooling mean \
 --lr 1e-3 \
@@ -21,8 +21,8 @@ CUDA_VISIBLE_DEVICES=0,1 python main.py --model-dir "${OUTPUT_DIR}" \
 --train-path "${DATA_DIR}/train.txt.json" \
 --valid-path "${DATA_DIR}/valid.txt.json" \
 --rel-path "${DATA_DIR}/relations.json" \
---num-rels 822 \
---task wiki5m_ind \
+--num-rels 11 \
+--task WN18RR \
 --batch-size 1024 \
 --print-freq 20 \
 --additive-margin 0.02 \

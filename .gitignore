@@ -93,22 +93,17 @@ ipython_config.py
 
 # PEP 582; used by e.g. github.com/David-OConnor/pyflow
 __pypackages__/
-checkpoints/
 mlruns/
 wandb/
 results/
 logs/
-MAMI/
 # Celery stuff
 celerybeat-schedule
 celerybeat.pid
-modeling/bert.py
-modeling/qformer.py
-blip_preprocessing.py
-*.zip
+
+
 # SageMath parsed files
 *.sage.py
-EmoRegCom_DATA/
 # Environments
 .env
 .venv
