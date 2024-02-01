@@ -30,23 +30,28 @@ pip install -r requirement.txt
 
 ## Data Preprocessing
 ```bash
-bash scripts/preprocess.sh wiki5m_ind
+bash scripts/preprocess.sh WN18RR
 ```
 ## Train
 To train a Bi-Link BERT, please run
 ```bash
-bash scripts/train.sh 
-```
-## Evaluation
-To evaluate the model, please run
-```bash
-bash scripts/eval.sh
+OUTPUT_DIR=./checkpoint/wn18rr/ DATA_DIR=./data/WN18RR bash scripts/train_wn.sh
 ```
 ## Checkpoints
 | Dataset                 | Checkpoints                                                          |
 |-------------------------|----------------------------------------------------------------------|
-| WN18RR                  | [Checkpoint](./checkpoint/bilink_bert/bilink_bert.bin)               |
+| WN18RR Bi-Link BERT     | [Checkpoint](https://mega.nz/file/1W0yVLTY#1zOuDVhYyplCvZp5AOQTGey7dCiSqA0FnKepPmVGupg)|
 | Wikidata5M-transductive | [Checkpoint](https://mega.nz/folder/ob8mXYoL#1YXiUlX8RI7NZdrAnvypdA) |
+
+```bash
+mv ${CHECKPOINT_BI-LINK_WN18RR} checkpoints/bilink_bert
+```
+## Evaluation
+To evaluate the model, please run
+```bash
+bash scripts/eval_wiki5m_ind.sh ${CHECKPOINT} WN18RR
+```
+
 ## Model Comparison
 <figure>
 <img src="./assets/relevance_scores.png" style="width: 76%;"/>
