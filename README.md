@@ -2,12 +2,12 @@
 The code for Bi-Stage Prefix Tuning framework will be updated in this repo. The framework involves two Prefix-Tuning stages for inference speedup of knowledge graph reasoning.
 In the first Prefix-Tuning stage, we apply vanillar Prefix-Tuning to obtain entity prefixes (representations). In the second stage, another round of Prefix-Tuning learns a group of relation prefixes to predict tail entities. Both stages are tuned with contrastive loss.
 <figure>
-<img src="./assets/dualprompt_a.png" style="width: 76%:"/>
+<img src="./assets/dualprompt_a.png" style="width: 56%:"/>
     <figcaption style="text-align: center">Fig. 1 Bi-stage Prefix-Tuning of KG reasoning.</figcaption>
 </figure>
 
 <figure>
-<img src="./assets/dualprompt_b.png" style="width: 76%;"/>
+<img src="./assets/dualprompt_b.png" style="width: 56%;"/>
     <figcaption style="text-align: center">Fig. 2 Inference stage of Bi-Link.</figcaption>
 </figure>
 
@@ -54,7 +54,7 @@ bash scripts/eval_wiki5m_ind.sh ${CHECKPOINT} WN18RR
 
 ## Model Comparison
 <figure>
-<img src="./assets/relevance_scores.png" style="width: 76%;"/>
+<img src="./assets/relevance_scores.png" style="width: 56%;"/>
     <figcaption style="text-align: center">Fig. 3 Comparison between wrongly predicted tails' relevance scores with labels.</figcaption>
 </figure>
 
