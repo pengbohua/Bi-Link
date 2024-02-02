@@ -6,8 +6,6 @@ import torch.nn as nn
 from dataclasses import dataclass
 from transformers import AutoModel, AutoConfig
 
-latency = 0
-
 
 def build_model(args) -> nn.Module:
     if args.pretrained_model == 'bert-base-uncased':
@@ -127,8 +125,9 @@ class CustomBertModel(nn.Module, ABC):
                           attention_mask=prefix_mask,
                           token_type_ids=token_type_ids,
                           past_key_values=past_key_values, )[0]
-        cls_outputs = outputs[:, 0, :]
-        return cls_outputs
+        cls_output = outputs[:, 0, :]
+        cls_output = _pool_output(self.args.pooling, cls_output, mask, last_hidden_state)
+        return cls_output
 
     def forward(self, hr_token_ids, hr_mask, hr_token_type_ids,
                 tail_token_ids, tail_mask, tail_token_type_ids,
@@ -141,7 +140,6 @@ class CustomBertModel(nn.Module, ABC):
         if only_ent_embedding:
             return self.predict_ent_embedding(tail_token_ids=tail_token_ids,
                                               tail_mask=tail_mask,
-                                              tail_token_type_ids=tail_token_type_ids,
                                               past_key_values=tail_past_key_values
                                               )
 
@@ -271,21 +269,20 @@ class CustomGPTModel(nn.Module, ABC):
         past_key_values = past_key_values.permute([2, 0, 3, 1, 4]).split(2)  # layers, bs, num_heads, seq_len, hid_dim
         return past_key_values, prefix_tokens
 
-    def _encode(self, encoder, token_ids, mask, token_type_ids, past_key_values):
+    def _encode(self, encoder, token_ids, mask, past_key_values):
         prefix_mask = torch.ones(len(mask), self.pre_seq_len).long().to(mask.device)
         prefix_mask = torch.cat([prefix_mask, mask], dim=1)
         # attend to past key values
         outputs = encoder(input_ids=token_ids,
                           attention_mask=prefix_mask,
-                          token_type_ids=token_type_ids,
                           past_key_values=past_key_values, )[0]
         last_outputs = outputs[:, -1, :]
         return last_outputs
 
-    def forward(self, hr_token_ids, hr_mask, hr_token_type_ids,
-                tail_token_ids, tail_mask, tail_token_type_ids,
-                head_token_ids, head_mask, head_token_type_ids,
-                relation_ids,
+    def forward(self, hr_token_ids, hr_mask, relation_ids,
+                tail_token_ids, tail_mask,
+                head_token_ids, head_mask,
+                hr_token_type_ids=None, tail_token_type_ids=None, head_token_type_ids=None,
                 only_ent_embedding=False, **kwargs) -> dict:
         batchsize = len(hr_token_ids)
         # global latency
@@ -293,7 +290,6 @@ class CustomGPTModel(nn.Module, ABC):
         if only_ent_embedding:
             return self.predict_ent_embedding(tail_token_ids=tail_token_ids,
                                               tail_mask=tail_mask,
-                                              tail_token_type_ids=tail_token_type_ids,
                                               past_key_values=tail_past_key_values
                                               )
 
@@ -302,21 +298,18 @@ class CustomGPTModel(nn.Module, ABC):
         hr_vector = self._encode(self.hr_gpt,
                                  token_ids=hr_token_ids,
                                  mask=hr_mask,
-                                 token_type_ids=hr_token_type_ids,
                                  past_key_values=hr_past_key_values
                                  )
 
         tail_vector = self._encode(self.tail_gpt,
                                    token_ids=tail_token_ids,
                                    mask=tail_mask,
-                                   token_type_ids=tail_token_type_ids,
                                    past_key_values=tail_past_key_values
                                    )
 
         head_vector = self._encode(self.tail_gpt,
                                    token_ids=head_token_ids,
                                    mask=head_mask,
-                                   token_type_ids=head_token_type_ids,
                                    past_key_values=tail_past_key_values
                                    )
         return {'hr_vector': hr_vector,
@@ -351,13 +344,32 @@ class CustomGPTModel(nn.Module, ABC):
                 'tail_vector': tail_vector.detach()}
 
     @torch.no_grad()
-    def predict_ent_embedding(self, tail_token_ids, tail_mask, tail_token_type_ids, past_key_values, **kwargs) -> dict:
+    def predict_ent_embedding(self, tail_token_ids, tail_mask, past_key_values, **kwargs) -> dict:
         ent_vectors = self._encode(self.tail_gpt,
                                    token_ids=tail_token_ids,
                                    mask=tail_mask,
-                                   token_type_ids=tail_token_type_ids,
                                    past_key_values=past_key_values,
                                    )
         return {'ent_vectors': ent_vectors.detach()}
 
 
+def _pool_output(pooling: str,
+                 cls_output: torch.tensor,
+                 mask: torch.tensor,
+                 last_hidden_state: torch.tensor) -> torch.tensor:
+    if pooling == 'cls':
+        output_vector = cls_output
+    elif pooling == 'max':
+        input_mask_expanded = mask.unsqueeze(-1).expand(last_hidden_state.size()).long()
+        last_hidden_state[input_mask_expanded == 0] = -1e4
+        output_vector = torch.max(last_hidden_state, 1)[0]
+    elif pooling == 'mean':
+        input_mask_expanded = mask.unsqueeze(-1).expand(last_hidden_state.size()).float()
+        sum_embeddings = torch.sum(last_hidden_state * input_mask_expanded, 1)
+        sum_mask = torch.clamp(input_mask_expanded.sum(1), min=1e-4)
+        output_vector = sum_embeddings / sum_mask
+    else:
+        assert False, 'Unknown pooling mode: {}'.format(pooling)
+
+    output_vector = nn.functional.normalize(output_vector, dim=1)
+    return output_vector

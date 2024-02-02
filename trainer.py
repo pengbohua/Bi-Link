@@ -9,11 +9,11 @@ from typing import Dict
 from transformers import get_linear_schedule_with_warmup, get_cosine_schedule_with_warmup
 from transformers import AdamW
 
-from doc import Dataset, collate
+from doc import Dataset, collate, relation2ids, gpt_collate
 from utils import AverageMeter, ProgressMeter
 from utils import save_checkpoint, delete_old_ckt, report_num_trainable_parameters, move_to_cuda, get_model_obj
 from metric import accuracy
-from model_prefix import build_model, ModelOutput
+from model_bilink import build_model, ModelOutput
 from dict_hub import build_tokenizer
 from logger_config import logger
 
@@ -27,6 +27,7 @@ class Trainer:
 
         # create model
         logger.info("=> creating model")
+        self.args.num_rels = len(relation2ids)
         self.model = build_model(self.args)
         logger.info(self.model)
         self._setup_training()
@@ -51,7 +52,7 @@ class Trainer:
             train_dataset,
             batch_size=args.batch_size,
             shuffle=True,
-            collate_fn=collate,
+            collate_fn=collate if "bert" in args.pretrained_model else gpt_collate,
             num_workers=args.workers,
             pin_memory=True,
             drop_last=True)
@@ -139,7 +140,7 @@ class Trainer:
             [losses, inv_t, top1, top3],
             prefix="Epoch: [{}]".format(epoch))
 
-        self._run_eval(epoch=epoch, step=0)
+        # self._run_eval(epoch=epoch, step=0)
         for i, batch_dict in enumerate(self.train_loader):
             # switch to train mode
             self.model.train()

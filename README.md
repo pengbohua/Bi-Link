@@ -13,6 +13,11 @@ In the first Prefix-Tuning stage, we apply vanillar Prefix-Tuning to obtain enti
 
 ## Please Check Our Revised Paper
 [Rethinking Knowledge Graph Reasoning via Bi-stage Tuning for Inference Speedup and Antiphrasis Evaluation](./revised_manuscript.pdf)
+## Download all files within the repo
+```bash
+unzip all_files.zip -d DESTINATION
+```
+
 ## Data Preparation
 Extract knowledge graphs to the data folder similar as follows:
 ```python
