@@ -46,6 +46,10 @@ if args.use_link_graph:
 def _custom_tokenize(text: str,
                      text_pair: Optional[str] = None) -> dict:
     tokenizer = get_tokenizer()
+    if 'gpt' in args.pretrained_model:
+        tokenizer.padding_side = 'left'
+        tokenizer.pad_token = tokenizer.eos_token
+
     encoded_inputs = tokenizer(text=text,
                                text_pair=text_pair if text_pair else None,
                                add_special_tokens=True,
