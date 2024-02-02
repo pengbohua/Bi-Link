@@ -25,7 +25,6 @@ class BertPredictor:
         assert os.path.exists(ckt_path)
         ckt_dict = torch.load(ckt_path, map_location=lambda storage, loc: storage)
         self.train_args.__dict__ = ckt_dict['args']
-        self.train_args.pretrained_model = 'bert-base-uncased'
         self._setup_args()
         build_tokenizer(self.train_args)
         # self.model = build_model(self.train_args)

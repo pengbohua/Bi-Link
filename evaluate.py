@@ -154,7 +154,7 @@ def eval_single_direction(predictor: BertPredictor,
         cur_topk_indices = topk_indices[idx]
         pred_idx = cur_topk_indices[0]
         avg_topk_score = np.mean(cur_topk_scores)
-        # TODO
+
         cur_score_info = {entity_dict.get_entity_by_idx(topk_idx).entity: [entity_dict.get_entity_by_idx(topk_idx).entity_desc, round(topk_score, 3)]
                           for topk_score, topk_idx in zip(cur_topk_scores, cur_topk_indices)}
 
