@@ -63,7 +63,7 @@ class Trainer:
                 valid_dataset,
                 batch_size=args.batch_size * 2,
                 shuffle=True,
-                collate_fn=collate,
+                collate_fn=collate if "bert" in args.pretrained_model else gpt_collate,
                 num_workers=args.workers,
                 pin_memory=True)
 
