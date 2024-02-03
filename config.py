@@ -35,7 +35,7 @@ parser.add_argument('--use-amp', action='store_true',
                     help='Use amp if available')
 parser.add_argument('--t', default=0.05, type=float,
                     help='temperature parameter')
-parser.add_argument('--use-link-graph', action='store_true',
+parser.add_argument('--use-link-graph', type=bool, default=False, required=False,
                     help='use neighbors from link graph as context')
 parser.add_argument('--eval-every-n-step', default=10000, type=int,
                     help='evaluate every n steps')

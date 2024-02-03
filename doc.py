@@ -61,7 +61,7 @@ def _custom_tokenize(text: str,
                                text_pair=text_pair if text_pair else None,
                                add_special_tokens=True,
                                max_length=args.max_num_tokens,
-                               return_token_type_ids=False if 'gpt' in args.pretrained_model else True,
+                               return_token_type_ids=True,
                                truncation="longest_first"
                                )
     return encoded_inputs
@@ -144,17 +144,8 @@ class Example:
         tail_word = _parse_entity_name(self.tail)
         tail_encoded_inputs = _custom_tokenize(text=_concat_name_desc(tail_word, tail_desc))
 
-        if 'gpt' in args.pretrained_model:
-            return {'hr_token_ids': hr_encoded_inputs['input_ids'],
-                    # 'hr_token_type_ids': hr_encoded_inputs['token_type_ids'],
-                    'tail_token_ids': tail_encoded_inputs['input_ids'],
-                    # 'tail_token_type_ids': tail_encoded_inputs['token_type_ids'],
-                    'head_token_ids': head_encoded_inputs['input_ids'],
-                    # 'head_token_type_ids': head_encoded_inputs['token_type_ids'],
-                    'relation_ids': self.relation_id,
-                    'obj': self}
-        else:
-            return {'hr_token_ids': hr_encoded_inputs['input_ids'],
+
+        return {'hr_token_ids': hr_encoded_inputs['input_ids'],
                 'hr_token_type_ids': hr_encoded_inputs['token_type_ids'],
                 'tail_token_ids': tail_encoded_inputs['input_ids'],
                 'tail_token_type_ids': tail_encoded_inputs['token_type_ids'],
@@ -222,6 +213,7 @@ class AntiPhrasisExample:
                 'head_token_type_ids': head_encoded_inputs['token_type_ids'],
                 'relation_ids': self.relation_id,
                 'obj': self}
+
 
 class Dataset(torch.utils.data.dataset.Dataset):
 
@@ -314,40 +306,6 @@ def collate(batch_data: List[dict]) -> dict:
 
     return batch_dict
 
-
-def gpt_collate(batch_data: List[dict]) -> dict:
-    hr_token_ids, hr_mask = to_indices_and_mask(
-        [torch.LongTensor(ex['hr_token_ids']) for ex in batch_data],
-        pad_token_id=get_tokenizer().pad_token_id)
-
-
-    tail_token_ids, tail_mask = to_indices_and_mask(
-        [torch.LongTensor(ex['tail_token_ids']) for ex in batch_data],
-        pad_token_id=get_tokenizer().pad_token_id)
-
-
-    head_token_ids, head_mask = to_indices_and_mask(
-        [torch.LongTensor(ex['head_token_ids']) for ex in batch_data],
-        pad_token_id=get_tokenizer().pad_token_id)
-
-    relation_ids = torch.LongTensor([ex['relation_ids']for ex in batch_data])
-
-
-    batch_exs = [ex['obj'] for ex in batch_data]
-    batch_dict = {
-        'hr_token_ids': hr_token_ids,
-        'hr_mask': hr_mask,
-        'tail_token_ids': tail_token_ids,
-        'tail_mask': tail_mask,
-        'head_token_ids': head_token_ids,
-        'head_mask': head_mask,
-        'relation_ids': relation_ids,
-        'batch_data': batch_exs,
-        'triplet_mask': construct_mask(row_exs=batch_exs) if not args.is_test else None,
-        'self_negative_mask': construct_self_negative_mask(batch_exs) if not args.is_test else None,
-    }
-
-    return batch_dict
 
 def to_indices_and_mask(batch_tensor, pad_token_id=0, need_mask=True):
     mx_len = max([t.size(0) for t in batch_tensor])

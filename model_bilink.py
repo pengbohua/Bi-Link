@@ -121,11 +121,11 @@ class CustomBertModel(nn.Module, ABC):
         prefix_mask = torch.ones(len(mask), self.pre_seq_len).long().to(mask.device)
         prefix_mask = torch.cat([prefix_mask, mask], dim=1)
         # attend to past key values
-        outputs = encoder(input_ids=token_ids,
+        last_hidden_state = encoder(input_ids=token_ids,
                           attention_mask=prefix_mask,
                           token_type_ids=token_type_ids,
                           past_key_values=past_key_values, )[0]
-        cls_output = outputs[:, 0, :]
+        cls_output = last_hidden_state[:, 0, :]
         cls_output = _pool_output(self.args.pooling, cls_output, mask, last_hidden_state)
         return cls_output
 
@@ -269,23 +269,25 @@ class CustomGPTModel(nn.Module, ABC):
         past_key_values = past_key_values.permute([2, 0, 3, 1, 4]).split(2)  # layers, bs, num_heads, seq_len, hid_dim
         return past_key_values, prefix_tokens
 
-    def _encode(self, encoder, token_ids, mask, past_key_values):
+    def _encode(self, encoder, token_ids, mask, token_type_ids, past_key_values):
         prefix_mask = torch.ones(len(mask), self.pre_seq_len).long().to(mask.device)
         prefix_mask = torch.cat([prefix_mask, mask], dim=1)
         # attend to past key values
-        outputs = encoder(input_ids=token_ids,
+        last_hidden_state = encoder(input_ids=token_ids,
                           attention_mask=prefix_mask,
+                          token_type_ids=token_type_ids,
                           past_key_values=past_key_values, )[0]
-        last_outputs = outputs[:, -1, :]
+
+        last_outputs = last_hidden_state[:, -1, :]
         return last_outputs
 
-    def forward(self, hr_token_ids, hr_mask, relation_ids,
-                tail_token_ids, tail_mask,
-                head_token_ids, head_mask,
-                hr_token_type_ids=None, tail_token_type_ids=None, head_token_type_ids=None,
+    def forward(self, hr_token_ids, hr_mask, hr_token_type_ids,
+                tail_token_ids, tail_mask, tail_token_type_ids,
+                head_token_ids, head_mask, head_token_type_ids,
+                relation_ids,
                 only_ent_embedding=False, **kwargs) -> dict:
         batchsize = len(hr_token_ids)
-        # global latency
+
         tail_past_key_values, prefix_tokens = self.get_prompt(batchsize, self.prefix_tokens)
         if only_ent_embedding:
             return self.predict_ent_embedding(tail_token_ids=tail_token_ids,
@@ -295,23 +297,27 @@ class CustomGPTModel(nn.Module, ABC):
 
         hr_past_key_values, prefix_tokens = self.get_prompt(batchsize, relation_ids=relation_ids)
 
-        hr_vector = self._encode(self.hr_gpt,
+        hr_vector = self._encode(self.hr_bert,
                                  token_ids=hr_token_ids,
                                  mask=hr_mask,
+                                 token_type_ids=hr_token_type_ids,
                                  past_key_values=hr_past_key_values
                                  )
 
-        tail_vector = self._encode(self.tail_gpt,
+        tail_vector = self._encode(self.tail_bert,
                                    token_ids=tail_token_ids,
                                    mask=tail_mask,
+                                   token_type_ids=tail_token_type_ids,
                                    past_key_values=tail_past_key_values
                                    )
 
-        head_vector = self._encode(self.tail_gpt,
+        head_vector = self._encode(self.tail_bert,
                                    token_ids=head_token_ids,
                                    mask=head_mask,
+                                   token_type_ids=head_token_type_ids,
                                    past_key_values=tail_past_key_values
                                    )
+        # DataParallel only support tensor/dict
         return {'hr_vector': hr_vector,
                 'tail_vector': tail_vector,
                 'head_vector': head_vector}
@@ -349,6 +355,7 @@ class CustomGPTModel(nn.Module, ABC):
                                    token_ids=tail_token_ids,
                                    mask=tail_mask,
                                    past_key_values=past_key_values,
+                                   token_type_ids=tail_token_ids,
                                    )
         return {'ent_vectors': ent_vectors.detach()}
 

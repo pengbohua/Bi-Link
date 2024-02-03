@@ -9,7 +9,7 @@ from typing import Dict
 from transformers import get_linear_schedule_with_warmup, get_cosine_schedule_with_warmup
 from transformers import AdamW
 
-from doc import Dataset, collate, relation2ids, gpt_collate
+from doc import Dataset, collate, relation2ids
 from utils import AverageMeter, ProgressMeter
 from utils import save_checkpoint, delete_old_ckt, report_num_trainable_parameters, move_to_cuda, get_model_obj
 from metric import accuracy
@@ -52,7 +52,7 @@ class Trainer:
             train_dataset,
             batch_size=args.batch_size,
             shuffle=True,
-            collate_fn=collate if "bert" in args.pretrained_model else gpt_collate,
+            collate_fn=collate,
             num_workers=args.workers,
             pin_memory=True,
             drop_last=True)
@@ -63,7 +63,7 @@ class Trainer:
                 valid_dataset,
                 batch_size=args.batch_size * 2,
                 shuffle=True,
-                collate_fn=collate if "bert" in args.pretrained_model else gpt_collate,
+                collate_fn=collate,
                 num_workers=args.workers,
                 pin_memory=True)
 

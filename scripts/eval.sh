@@ -41,6 +41,7 @@ python3 -u evaluate.py \
 --task "${task}" \
 --is-test \
 --eval-model-path "${model_path}" \
+--rel-path "${DATA_DIR}/relations.json" \
 --neighbor-weight "${neighbor_weight}" \
 --rerank-n-hop "${rerank_n_hop}" \
 --train-path "${DATA_DIR}/train.txt.json" \
