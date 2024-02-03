@@ -54,7 +54,7 @@ mv ${CHECKPOINT_BI-LINK_WN18RR} checkpoints/bilink_bert
 ## Evaluation
 To evaluate the model, please run
 ```bash
-bash scripts/eval_wiki5m_ind.sh ${CHECKPOINT} WN18RR
+bash scripts/eval.sh ${CHECKPOINT} WN18RR
 ```
 
 ## Model Comparison
