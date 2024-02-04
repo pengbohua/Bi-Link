@@ -12,6 +12,7 @@ In the first Prefix-Tuning stage, we apply vanillar Prefix-Tuning to obtain enti
 </figure>
 
 ## Please Check Our Revised Paper
+The revised related works sections include recent breakthroughs introduced by ULTRA.
 [Rethinking Knowledge Graph Reasoning via Bi-stage Tuning for Inference Speedup and Antiphrasis Evaluation](./revised_manuscript.pdf)
 ## Download all files within the repo
 ```bash
@@ -46,6 +47,7 @@ OUTPUT_DIR=./checkpoint/wn18rr/ DATA_DIR=./data/WN18RR bash scripts/train_wn.sh
 | Dataset                 | Checkpoints                                                          |
 |-------------------------|----------------------------------------------------------------------|
 | WN18RR Bi-Link BERT     | [Checkpoint](https://mega.nz/file/1W0yVLTY#1zOuDVhYyplCvZp5AOQTGey7dCiSqA0FnKepPmVGupg)|
+| WN18RR Bi-Link GPT | [Checkpoint](https://mega.nz/folder/BWc3hY7R#8AuEKHLhUJMRBywbzQeXiA)|
 | Wikidata5M-transductive | [Checkpoint](https://mega.nz/folder/ob8mXYoL#1YXiUlX8RI7NZdrAnvypdA) |
 
 ```bash
