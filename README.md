@@ -15,6 +15,8 @@ In the first Prefix-Tuning stage, we apply vanillar Prefix-Tuning to obtain enti
 The revised related works include recent breakthroughs introduced by ULTRA with comparison detailed in Appendices B.
 
 [Rethinking Knowledge Graph Reasoning via Bi-stage Tuning for Inference Speedup and Antiphrasis Evaluation](./revised_manuscript.pdf)
+## About Reference
+We have reworked on the revised_lrec-coling2024.bib, with Arxiv papers replaced by conference papers.
 ## Download all files within the repo
 ```bash
 unzip all_files.zip -d DESTINATION
