@@ -27,7 +27,6 @@ class BertPredictor:
         self.train_args.__dict__ = ckt_dict['args']
         self._setup_args()
         build_tokenizer(self.train_args)
-        # self.model = build_model(self.train_args)
         self.model = build_model(args)
         # DataParallel will introduce 'module.' prefix
         state_dict = ckt_dict['state_dict']
@@ -36,7 +35,7 @@ class BertPredictor:
             if k.startswith('module.'):
                 k = k[len('module.'):]
             new_state_dict[k] = v
-        # self.model.load_state_dict(new_state_dict, strict=False)
+        self.model.load_state_dict(new_state_dict, strict=False)
         self.model.eval()
 
         if use_data_parallel and torch.cuda.device_count() > 1:

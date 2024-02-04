@@ -62,7 +62,7 @@ def _custom_tokenize(text: str,
                                add_special_tokens=True,
                                max_length=args.max_num_tokens,
                                return_token_type_ids=True,
-                               truncation="longest_first"
+                               truncation=True
                                )
     return encoded_inputs
 
@@ -100,6 +100,7 @@ class Example:
         self.head_id = head_id
         self.tail_id = tail_id
         self.relation = relation
+        self.reverse = reverse
         if not ent:
             self.relation_id = relation2ids[self.relation] + args.num_rels if reverse else relation2ids[self.relation]
         else:
@@ -137,7 +138,7 @@ class Example:
         head_word = _parse_entity_name(self.head)
         head_text = _concat_name_desc(head_word, head_desc)
         hr_encoded_inputs = _custom_tokenize(text=head_text,
-                                             text_pair=self.relation)
+                                             text_pair="inverse" + self.relation if self.reverse else self.relation)
 
         head_encoded_inputs = _custom_tokenize(text=head_text)
 

@@ -5,7 +5,7 @@ import torch
 from config import args
 from predict import BertPredictor
 from dict_hub import get_entity_dict
-from evaluate_infix import eval_single_direction
+from evaluate import eval_single_direction
 from logger_config import logger
 
 assert args.task == 'wiki5m_trans', 'This script is only used for wiki5m transductive setting'

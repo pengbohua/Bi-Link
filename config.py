@@ -24,7 +24,7 @@ parser.add_argument('--model-dir', default='', type=str, metavar='N',
 parser.add_argument('--warmup', default=400, type=int, metavar='N',
                     help='warmup steps')
 parser.add_argument('--max-to-keep', default=5, type=int, metavar='N',
-                    help='max number of checkpoints to keep')
+                    help='max number of checkpoint to keep')
 parser.add_argument('--grad-clip', default=10.0, type=float, metavar='N',
                     help='gradient clipping')
 parser.add_argument('--pooling', default='cls', type=str, metavar='N',

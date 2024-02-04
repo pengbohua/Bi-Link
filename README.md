@@ -49,7 +49,7 @@ OUTPUT_DIR=./checkpoint/wn18rr/ DATA_DIR=./data/WN18RR bash scripts/train_wn.sh
 | Wikidata5M-transductive | [Checkpoint](https://mega.nz/folder/ob8mXYoL#1YXiUlX8RI7NZdrAnvypdA) |
 
 ```bash
-mv ${CHECKPOINT_BI-LINK_WN18RR} checkpoints/bilink_bert
+mv ${CHECKPOINT_BI-LINK_WN18RR} checkpoint/bilink_bert
 ```
 ## Evaluation
 To evaluate the model, please run

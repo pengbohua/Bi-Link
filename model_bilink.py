@@ -132,7 +132,7 @@ class CustomBertModel(nn.Module, ABC):
     def forward(self, hr_token_ids, hr_mask, hr_token_type_ids,
                 tail_token_ids, tail_mask, tail_token_type_ids,
                 head_token_ids, head_mask, head_token_type_ids,
-                relation_ids,
+                relation_ids=None,
                 only_ent_embedding=False, **kwargs) -> dict:
         batchsize = len(hr_token_ids)
 
@@ -218,6 +218,14 @@ class CustomGPTModel(nn.Module, ABC):
         self.log_inv_t = torch.nn.Parameter(torch.tensor(1.0 / args.t).log(), requires_grad=args.finetune_t)
         self.add_margin = args.additive_margin
         self.batch_size = args.batch_size
+        self.pre_batch = args.pre_batch
+        num_pre_batch_vectors = max(1, self.pre_batch) * self.batch_size
+        random_vector = torch.randn(num_pre_batch_vectors, self.config.hidden_size)
+        self.register_buffer("pre_batch_vectors",
+                             nn.functional.normalize(random_vector, dim=1),
+                             persistent=False)
+        self.offset = 0
+        self.pre_batch_exs = [None for _ in range(num_pre_batch_vectors)]
 
         self.hr_gpt = AutoModel.from_pretrained(args.pretrained_model)
         self.tail_gpt = deepcopy(self.hr_gpt)
@@ -270,13 +278,10 @@ class CustomGPTModel(nn.Module, ABC):
         return past_key_values, prefix_tokens
 
     def _encode(self, encoder, token_ids, mask, token_type_ids, past_key_values):
-        prefix_mask = torch.ones(len(mask), self.pre_seq_len).long().to(mask.device)
-        prefix_mask = torch.cat([prefix_mask, mask], dim=1)
         # attend to past key values
         last_hidden_state = encoder(input_ids=token_ids,
-                          attention_mask=prefix_mask,
-                          token_type_ids=token_type_ids,
-                          past_key_values=past_key_values, )[0]
+                          attention_mask=mask,
+                          token_type_ids=token_type_ids,)[0]
 
         last_outputs = last_hidden_state[:, -1, :]
         return last_outputs
@@ -284,7 +289,7 @@ class CustomGPTModel(nn.Module, ABC):
     def forward(self, hr_token_ids, hr_mask, hr_token_type_ids,
                 tail_token_ids, tail_mask, tail_token_type_ids,
                 head_token_ids, head_mask, head_token_type_ids,
-                relation_ids,
+                relation_ids=None,
                 only_ent_embedding=False, **kwargs) -> dict:
         batchsize = len(hr_token_ids)
 
@@ -292,26 +297,27 @@ class CustomGPTModel(nn.Module, ABC):
         if only_ent_embedding:
             return self.predict_ent_embedding(tail_token_ids=tail_token_ids,
                                               tail_mask=tail_mask,
+                                              tail_token_type_ids=tail_token_type_ids,
                                               past_key_values=tail_past_key_values
                                               )
 
         hr_past_key_values, prefix_tokens = self.get_prompt(batchsize, relation_ids=relation_ids)
 
-        hr_vector = self._encode(self.hr_bert,
+        hr_vector = self._encode(self.hr_gpt,
                                  token_ids=hr_token_ids,
                                  mask=hr_mask,
                                  token_type_ids=hr_token_type_ids,
                                  past_key_values=hr_past_key_values
                                  )
 
-        tail_vector = self._encode(self.tail_bert,
+        tail_vector = self._encode(self.tail_gpt,
                                    token_ids=tail_token_ids,
                                    mask=tail_mask,
                                    token_type_ids=tail_token_type_ids,
                                    past_key_values=tail_past_key_values
                                    )
 
-        head_vector = self._encode(self.tail_bert,
+        head_vector = self._encode(self.tail_gpt,
                                    token_ids=head_token_ids,
                                    mask=head_mask,
                                    token_type_ids=head_token_type_ids,
@@ -350,15 +356,13 @@ class CustomGPTModel(nn.Module, ABC):
                 'tail_vector': tail_vector.detach()}
 
     @torch.no_grad()
-    def predict_ent_embedding(self, tail_token_ids, tail_mask, past_key_values, **kwargs) -> dict:
+    def predict_ent_embedding(self, tail_token_ids, tail_mask, tail_token_type_ids, past_key_values, **kwargs) -> dict:
         ent_vectors = self._encode(self.tail_gpt,
                                    token_ids=tail_token_ids,
                                    mask=tail_mask,
                                    past_key_values=past_key_values,
-                                   token_type_ids=tail_token_ids,
-                                   )
+                                   token_type_ids=tail_token_type_ids,)
         return {'ent_vectors': ent_vectors.detach()}
-
 
 def _pool_output(pooling: str,
                  cls_output: torch.tensor,
