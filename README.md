@@ -1,6 +1,6 @@
 # Bi-Link
 The code for Bi-Stage Prefix Tuning framework will be updated in this repo. 
-The novelty of this paper is that text-based KG reasoning can be speeded up with Bi-Stage Prefix Tuning using **the same LLM (either a BERT or GPT)**. To measure semantic transferability, we develop an **Antiphrasis Evaluation Protocol** where understanding of novel relations is measured by performance drop. Hence, down is up! Welcome to check our implementation and prediction examples for more details.
+The novelty of this paper is that text-based KG reasoning can be speeded up with Bi-Stage Prefix Tuning using **the same LLM (either a BERT or GPT)**. To measure semantic transferability, we develop an **Antiphrasis Evaluation Protocol** where understanding of novel relations is measured by performance drop. Hence, down is up! Welcome to check our implementation and predictive examples for more details.
 <figure>
 <img src="./assets/dualprompt_a.png" style="width: 56%:"/>
     <figcaption style="text-align: center">Fig. 1 Bi-stage Prefix-Tuning of KG reasoning.</figcaption>
