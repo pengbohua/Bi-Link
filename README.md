@@ -1,6 +1,6 @@
 # Bi-Link
-The code for Bi-Stage Prefix Tuning framework will be updated in this repo. The framework involves two Prefix-Tuning stages for inference speedup of knowledge graph reasoning.
-In the first Prefix-Tuning stage, we apply vanillar Prefix-Tuning to obtain entity prefixes (representations). In the second stage, another round of Prefix-Tuning learns a group of relation prefixes to predict tail entities. Both stages are tuned with contrastive loss.
+The code for Bi-Stage Prefix Tuning framework will be updated in this repo. 
+The novelty of this paper is that text-based KG reasoning can be speeded up with Bi-Stage Prefix Tuning using **the same LLM (either a BERT or GPT)**. To measure semantic transferability, we develop an **Antiphrasis Evaluation Protocol** where understanding of novel relations is measured by performance drop. Hence, down is up! Welcome to check our implementation and prediction examples for more details.
 <figure>
 <img src="./assets/dualprompt_a.png" style="width: 56%:"/>
     <figcaption style="text-align: center">Fig. 1 Bi-stage Prefix-Tuning of KG reasoning.</figcaption>
