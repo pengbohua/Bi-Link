@@ -11,8 +11,9 @@ In the first Prefix-Tuning stage, we apply vanillar Prefix-Tuning to obtain enti
     <figcaption style="text-align: center">Fig. 2 Inference stage of Bi-Link.</figcaption>
 </figure>
 
-## Please Check Our Revised Paper
-The revised related works sections include recent breakthroughs introduced by ULTRA.
+## Please Check Our Revised Paper. The Appendices are now included.
+The revised related works include recent breakthroughs introduced by ULTRA with comparison detailed in Appendices B.
+
 [Rethinking Knowledge Graph Reasoning via Bi-stage Tuning for Inference Speedup and Antiphrasis Evaluation](./revised_manuscript.pdf)
 ## Download all files within the repo
 ```bash
