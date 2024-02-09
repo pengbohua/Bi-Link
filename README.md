@@ -61,6 +61,7 @@ To evaluate the model, please run
 ```bash
 bash scripts/eval.sh ${CHECKPOINT} WN18RR
 ```
+Please chage pretrained-model from bert-base-uncased to gpt-2 when evaluating Bi-Link GPT
 
 ## Model Comparison
 <figure>
