@@ -140,6 +140,7 @@ class CustomBertModel(nn.Module, ABC):
         if only_ent_embedding:
             return self.predict_ent_embedding(tail_token_ids=tail_token_ids,
                                               tail_mask=tail_mask,
+                                              tail_token_type_ids=tail_token_type_ids,
                                               past_key_values=tail_past_key_values
                                               )
 
